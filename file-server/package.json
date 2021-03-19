@@ -1,0 +1,13 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "file-server.js",
+  "scripts": {
+    "serve": "node file-server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
