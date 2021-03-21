@@ -1,4 +1,7 @@
 *.log.txt
 *.hidden
+*.db.js
+*.dump
+.secrets
 node_modules
 package-lock.json
