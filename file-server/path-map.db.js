@@ -1,9 +1,7 @@
 const map = new Map();
 
-const entries =
-[
-  "/ps", "/Adobe+Photoshop+2020+SP.7z",
-  "/adobe", "/AdobeCreativeCloudCleanerTool.exe"
+const entries = [
+  
 ];
 
 for (let i = 0; i < entries.length; i += 2) {

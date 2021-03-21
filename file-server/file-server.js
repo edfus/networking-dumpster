@@ -82,36 +82,35 @@ const fileServer = createServer((req, res) => {
       `attachment; filename="${encodeURIComponent(filename)}"` //NOTE
     );
 
-    res.writeHead(
-      200,
-      { 
-        "Content-Type": `${type}${charset ? "; charset=".concat(charset) : ""}`,
-        "Content-Length": stats.size,
-        "Last-Modified": lastModified,
-        "ETag": eTag,
-        "cache-control": "private, max-age=864000" // 10 days
-      }
-    );
+    const header = {
+      "Content-Type": `${type}${charset ? "; charset=".concat(charset) : ""}`,
+      "Last-Modified": lastModified,
+      "ETag": eTag,
+      "Cache-Control": "private, max-age=864000" // 10 days
+    };
+
+    if(stats.size > 27799262)
+      header["Transfer-Encoding"] = "chunked";
+    // else 
+      header["Content-Length"] = stats.size;
+
+    res.writeHead(200, header);
 
     if (stats.size === 0 || req.method === "HEAD") {
       return res.end();
     }
 
-    if(stats.size < 1240) ;
-      //TODO
-    //NOTE https://stackoverflow.com/a/52105944/13910382
-
     pipeline(
       createReadStream(filepath),
       res,
-      error => error 
+      error => error
                 ? logError(error, req)
                 : logInfo(`Serving file ${filename} to ${req.socket.remoteAddress}:${req.socket.remotePort} succeeded`)
     );
   });
 })
   .listen(
-    12345, 
+    12345,
     () => {
       const address = fileServer.address();
       console.info(
