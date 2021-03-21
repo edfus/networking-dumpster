@@ -1,2 +1,4 @@
 *.log.txt
 *.hidden
+node_modules
+package-lock.json
