@@ -18,7 +18,7 @@ const dumpPath = join(
 if (!existsSync(dumpPath))
   mkdirSync(dumpPath);
 
-const useProxy = false;
+const useProxy = /--proxy/.test(process.argv[2]) || false;
 const http = new HTTP("http://localhost:8888", useProxy);
 
 series(

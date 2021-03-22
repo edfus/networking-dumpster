@@ -120,7 +120,12 @@ const fileServer = createServer((req, res) => {
       );
     }
   )
-  .on("error", logError)
+  .on("error", logCritical)
+
+process.on('uncaughtExceptionMonitor', err => {
+  logCritical("There was an uncaught error")
+  logCritical(err);
+});
 
 function logCritical(entry) {
   log.critical.write(
