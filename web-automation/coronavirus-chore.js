@@ -7,6 +7,7 @@ import { basename, extname, join } from "path";
 import { JSDOM } from "jsdom";
 import { IncomingMessage } from "http";
 import metadata from "./.secrets/cc-metadata.js";
+import { stringify } from "querystring";
 
 const __filename = basename(import.meta.url);
 const dumpPath = join(
@@ -17,7 +18,7 @@ const dumpPath = join(
 if (!existsSync(dumpPath))
   mkdirSync(dumpPath);
 
-const useProxy = true;
+const useProxy = false;
 const http = new HTTP("http://localhost:8888", useProxy);
 
 series(
@@ -30,6 +31,7 @@ series(
   console.info,
   err => {
     if (err) throw err;
+    process.exitCode = 0;
   }
 );
 
@@ -41,7 +43,11 @@ async function getLoginHTML() {
     .then(res =>
       followRedirect(res)
         .then(async res => {
-          strictEqual(res.statusCode, 200);
+          mustStrictEqual(
+            res.statusCode,
+            200, 
+            () => `getLoginHTML failed. ${logResInfo(res)}`
+          );
 
           return new Promise((resolve, reject) => {
             const filepath = join(
@@ -55,10 +61,9 @@ async function getLoginHTML() {
               err => err ? reject(err) : resolve(filepath)
             );
           });
-
         })
     )
-    ;
+  ;
 }
 
 async function jsdomLogin(filepath) {
@@ -84,7 +89,14 @@ async function jsdomLogin(filepath) {
           "Content-type": type
         }
       }
-    ).then(res => followRedirect(res)).then(res => void res.resume());
+    ).then(res => {
+      mustStrictEqual(
+        res.statusCode,
+        200, 
+        () => `jsdomLogin failed. ${logResInfo(res)}`
+      );
+      return followRedirect(res);
+    }).then(res => void res.resume());
   });
 }
 
@@ -109,6 +121,12 @@ async function getFormModuleId() {
       },
       method: "POST"
     });
+
+    mustStrictEqual(
+      source.statusCode,
+      200, 
+      () => `getFormModuleId failed. ${logResInfo(source)}`
+    );
   }
 
   return new Promise((resolve, reject) => {
@@ -135,7 +153,7 @@ async function getFormModuleId() {
       err => {
         if (err) {
           if (source instanceof IncomingMessage)
-            err.stack += "\n\nThe response headers: ".concat(inspect(source.headers)).concat("\n");
+            err.stack += logResInfo(source);
           return reject(err);
         }
 
@@ -152,7 +170,11 @@ async function createForm(query) {
     })
       .then(res => 
         new Promise((resolve, reject) => {
-          strictEqual(res.statusCode, 200)
+          mustStrictEqual(
+            res.statusCode,
+            200, 
+            () => `createForm failed. ${logResInfo(res)}`
+          );
           const filepath = join(dumpPath,"./form-backup.html");
 
           pipeline(
@@ -171,12 +193,19 @@ async function sendData () {
       method: "post",
       hostname: metadata.hostname,
       path: metadata.postFormPath,
-      body: JSON.stringify(metadata.secrets.JSONForm),
+      body: stringify(metadata.secrets.JSONForm),
       headers: {
-        "Content-type": "application/json"
+        "Content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "Accept": "application/json, text/javascript, */*; q=0.01"
       }
     }
   ).then(res => {
+    mustStrictEqual(
+      res.statusCode,
+      200,
+      () => `sendData failed. ${logResInfo(res)}`
+    )
+
     return new Promise((resolve, reject) => {
       pipeline(
         res,
@@ -191,12 +220,11 @@ async function sendData () {
         }),
         err => {
           if (err) {
-            err.stack += "\n\nThe response headers: ".concat(inspect(res.headers)).concat("\n");
-            err.stack += `\nThe response status: ${res.statusCode} ${res.statusMessage}\n`;
+            err.stack += logResInfo(res);
             return reject(err);
           }
   
-          return resolve("done");
+          return resolve("done.");
         }
       );
     });
@@ -209,10 +237,7 @@ async function followRedirect(res) {
     return res;
 
   if (!res.headers.location)
-    throw (
-      `${res.statusCode} ${res.statusMessage} - Expected redirection `
-        .concat(inspect(res.headers))
-    );
+    throw new Error(logResInfo(res));
 
   let fetchPromise;
 
@@ -245,4 +270,20 @@ function series(...argv) {
     }
     return callback(null);
   })();
+}
+
+function logResInfo (res) {
+  return (
+    "\n\nThe response headers: ".concat(inspect(res.headers)).concat(
+      `\n\nThe response status: ${res.statusCode} ${res.statusMessage}\n`
+    )
+  );
+}
+
+function mustStrictEqual (actual, expect, emitCallback) {
+  try {
+    strictEqual(actual, expect)
+  } catch (err) {
+    throw emitCallback(err);
+  }
 }
