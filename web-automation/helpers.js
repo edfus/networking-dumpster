@@ -1,8 +1,7 @@
-import { ClientRequest, IncomingMessage } from "http";
 import cookieParser from "set-cookie-parser";
 import ProxyTunnel from "forward-proxy-tunnel";
-import { request as request_https } from "https";
-import { request as request_http } from "http";
+import { request as request_https, Agent as HTTPSAgent } from "https";
+import { request as request_http, Agent as HTTPAgent, ClientRequest, IncomingMessage } from "http";
 import { dirname } from "path";
 import { fileURLToPath } from "url";
 import { pipeline, Readable, Transform } from "stream";
@@ -109,7 +108,7 @@ class Cookie {
             // sameSite: ""
           }
         )
-        });
+      });
       return true;
     }
   
@@ -126,9 +125,33 @@ class HTTP {
     }
     this.cookie = new Cookie();
     this.lastContext = new URL("http://localhost");
+
+    this.defaultHeader = {
+      "Accept": "*/*",
+      "User-Agent": `node ${process.version}`
+    };
+
+    this.httpAgent = new HTTPAgent({
+      keepAlive: true
+    });
+
+    this.httpsAgent = new HTTPSAgent({
+      keepAlive: true
+    })
   }
 
   _request (uriObject, options, cb) {
+    options.headers = {
+      ...this.defaultHeader,
+      ...options.headers
+    }
+    options.agent = (
+      "agent" in options 
+          ? options.agent 
+          : uriObject.protocol === "https:" 
+              ? this.httpsAgent 
+              : this.httpAgent
+    );
     return (
       uriObject.protocol === "https:"
         ? request_https(uriObject, options, cb)

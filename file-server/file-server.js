@@ -100,6 +100,8 @@ const fileServer = createServer((req, res) => {
       return res.end();
     }
 
+    //TODO https://stackoverflow.com/a/52105944/13910382
+
     pipeline(
       createReadStream(filepath),
       res,

@@ -92,7 +92,7 @@ async function jsdomLogin(filepath) {
     ).then(res => {
       mustStrictEqual(
         res.statusCode,
-        200, 
+        302, 
         () => `jsdomLogin failed. ${logResInfo(res)}`
       );
       return followRedirect(res);
