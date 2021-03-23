@@ -23,6 +23,9 @@ const wsServer = createServer((req, res) => {
   req.resume();
 })
   .on("upgrade", (request, socket, head) => {
+    if(notImplemented(request))
+      return ;
+
     try {
       strictEqual(
         Buffer
@@ -45,7 +48,6 @@ const wsServer = createServer((req, res) => {
         .digest('base64')
     );
 
-    //TODO: Sec-WebSocket-Protocol
     socket.write([
       'HTTP/1.1 101 Switching Protocols',
       'Upgrade: websocket',
@@ -110,4 +112,37 @@ function formatError(err) {
     type: "error",
     ...err
   }
+}
+
+function checkCORS(request) {
+  request.headers["origin"]
+}
+
+function notImplemented(request) {
+  if(request.headers["sec-webSocket-protocol"]) {
+    request.writeHead(
+      501, "sec-webSocket-protocol Not Implemented"
+    ).end("sec-webSocket-protocol Not Implemented");
+    return false;
+  }
+
+  if(request.headers["sec-webSocket-extensions"]) {
+    request.writeHead(
+      501, "sec-webSocket-extensions Not Implemented"
+    ).end("sec-webSocket-extensions Not Implemented");
+    return false;
+  }
+
+  if(Number(request.headers["sec-webSocket-version"]) !== 13) {
+    request.writeHead(
+      501, 
+      `sec-webSocket-version ${request.headers["sec-webSocket-version"]} Not Implemented`,
+      {
+        "Connection": "Upgrade"
+      }
+    ).end("sec-webSocket-version should be 13");
+    return false;
+  }
+
+  return true;
 }
