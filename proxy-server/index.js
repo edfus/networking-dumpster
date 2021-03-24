@@ -62,12 +62,12 @@ class ProxyServer extends Server {
             serverRes.statusMessage,
             serverRes.headers
           );
-         this,_pipe(serverRes, res);
+         this._pipe(serverRes, res);
         })
         .once("error", tmpErrorHandler);
       ;
 
-     this,_pipe(req, serverReq);
+     this._pipe(req, serverReq);
     } catch (err) {
       res.writeHead(400, "Bad Proxy Request").end(err.message);
       this.emit("error", err);
@@ -94,7 +94,7 @@ class ProxyServer extends Server {
         serverSocket.write(head);
         serverSocket.removeListener("error", tmpErrorHandler);
 
-       this,_pipe(socket, serverSocket, socket);
+       this._pipe(socket, serverSocket, socket);
       })
         .once("error", tmpErrorHandler)
       ;
