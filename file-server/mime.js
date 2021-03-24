@@ -15,6 +15,7 @@ export default {
   ".dll": "application/octet-stream",
   ".eot": "application/vnd.ms-fontobject",
   ".epub": "application/epub+zip",
+  ".exe": "application/vnd.microsoft.portable-executable",
   ".gif": "image/gif",
   ".htm": "text/html",
   ".html": "text/html",
