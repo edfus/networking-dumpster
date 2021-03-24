@@ -1,13 +1,19 @@
-import { stat, createWriteStream, createReadStream } from "fs";
-import { createServer } from "http";
-import { extname, basename, join, normalize } from "path";
+import { stat, createWriteStream, createReadStream, readFileSync } from "fs";
+import { createServer as https_server } from "https";
+import { createServer as http_server } from "http";
+import { createServer as net_server } from "net";
+import { extname, basename, join, normalize, dirname } from "path";
 import { inspect } from "util";
 import { pipeline } from "stream";
 import mime from "./mime.js";
 import pathMap from "./path-map.db.js";
+import { fileURLToPath } from "url";
+
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function toLocalPath(path) {
-  return join("./files.hidden", normalize(path));
+  return join(__dirname, "./files.hidden", normalize(decodeURIComponent(path)));
 }
 
 const map = pathMap;
@@ -18,17 +24,65 @@ const log = {
   critical: createWriteStream("./critical.log.txt", { flags: "a" }),
 };
 
-const fileServer = createServer((req, res) => {
+const servers = {
+  https: https_server(
+    {
+      key: readFileSync("./cert.key"),
+      cert: readFileSync("./cert.pem")
+    },
+    requestListener
+  ).on("error", logCritical),
+
+  http: http_server((req, res) => 
+    res.writeHead(301, {
+      "Location": `https://${req.headers.host}${req.url}`
+    }).end()
+  ).on("error", logCritical)
+};
+
+const tcpServer =
+net_server(socket => {
+  socket.once("data", chunk => {
+    socket.pause().unshift(chunk);
+
+    servers[chunk[0] === 22 ? "https" : "http"]
+      .emit("connection", socket);
+
+    process.nextTick(() => socket.resume());
+  });
+})
+  .listen(
+    12345,
+    function () {
+      const address = this.address();
+      console.info(
+        `File server is running at ${address.family} ${address.address}:${address.port}`
+      );
+    }
+  )
+;
+
+const implementedMethods = ["GET", "PUT", "HEAD"];
+
+function requestListener (req, res) {
+  if (!implementedMethods.includes(req.method.toUpperCase()))
+    return res.writeHead(501).end();
+
   const url = new URL(req.url, `http://${req.headers.host || "[::]"}`);
 
-  let filepath = toLocalPath(
-    map.has(url.pathname)
-      ? map.get(url.pathname)
-      : url.pathname
-  ).replace(/\+/g, " ");
+  if (url.pathname.endsWith("/"))
+    url.pathname = url.pathname.concat("index.html");
 
-  if (filepath.endsWith("/"))
-    filepath = filepath.concat("index.html");
+  const filepath = url.pathname === "/index.html"
+    ? join(__dirname, "./index.html")
+    : toLocalPath(
+          map.has(url.pathname)
+            ? map.get(url.pathname)
+            : url.pathname
+        ).replace(/\+/g, " ")
+  ;
+
+  const isDownload = url.searchParams.get("d") || url.searchParams.get("download");
 
   stat(filepath, (err, stats) => {
     if (err) {
@@ -39,7 +93,7 @@ const fileServer = createServer((req, res) => {
         case "ENOTDIR":
           return res.writeHead(404).end("Not Found");
         default:
-          return res.writeHead(500).end();
+          return res.writeHead(500).end(err.message);
       }
     }
 
@@ -77,42 +131,42 @@ const fileServer = createServer((req, res) => {
       return res.writeHead(304).end("Not Modified");
     }
 
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${encodeURIComponent(filename)}"` //NOTE
-    );
-
     const headers = {
       "Content-Type": `${type}${charset ? "; charset=".concat(charset) : ""}`,
       "Last-Modified": lastModified,
       "ETag": eTag,
+      "Accept-Ranges": "bytes",
       "Cache-Control": "private, max-age=864000" // 10 days
     };
 
-    if (stats.size === 0 || req.method === "HEAD") {
-      return res.writeHead(200, headers).end();
+    if (isDownload) {
+      headers["Content-Disposition"]
+        = `attachment; filename="${encodeURIComponent(filename)}"`
+        ;
     }
 
-    let source = null;
-    if (req.headers['range']) {
-      const range = req.headers['range'];
+    if (stats.size === 0)
+      return res.writeHead(204, "Empty file", headers).end("Empty file");
+
+    let _start_ = 0, _end_ = stats.size - 1;
+    if (req.headers["range"]) {
+      const range = req.headers["range"];
       let { 0: start, 1: end } = (
         range.replace(/^bytes=/, "")
-            .split("-")
-            .map(n => parseInt(n, 10))
+          .split("-")
+          .map(n => parseInt(n, 10))
       );
-      end   = isNaN(end)   ? stats.size - 1       : end;
+      end = isNaN(end) ? stats.size - 1 : end;
       start = isNaN(start) ? stats.size - end - 1 : start;
 
-      if(!isInRange(-1, start, end, stats.size)) {
+      if (!isInRange(-1, start, end, stats.size)) {
         headers["Content-Range"] = `bytes */${stats.size}`;
         return res.writeHead(416, headers).end();
       }
 
       res.writeHead(206, {
         ...headers,
-        "Accept-Ranges": "bytes",
-        "Content-Range": `bytes ${start}-${end}/${data.size}`,
+        "Content-Range": `bytes ${start}-${end}/${stats.size}`,
         "Content-Length": String(end - start + 1),
       });
 
@@ -126,7 +180,8 @@ const fileServer = createServer((req, res) => {
        * An example to read the last 10 bytes of a file which is 100 bytes long:
        * createReadStream('sample.txt', { start: 90, end: 99 });
        */
-      source = createReadStream(filepath, { start, end });
+      _start_ = start;
+      _end_ = end;
     } else {
       // if (stats.size > 27799262) // roughly 25 MiB
       //   headers["Transfer-Encoding"] = "chunked";
@@ -134,35 +189,36 @@ const fileServer = createServer((req, res) => {
       res.writeHead(200, headers);
     }
 
+    if (req.method.toUpperCase() === "HEAD") {
+      return res.end();
+    }
+
     pipeline(
       // Number.MAX_SAFE_INTEGER is 8192 TiB
-      source || createReadStream(filepath),
+      createReadStream(filepath, { start: _start_, end: _end_ }),
       res,
       error => error
         ? logError(error, req)
         : logInfo(`Serving file ${filename} to ${req.socket.remoteAddress}:${req.socket.remotePort} succeeded`)
     );
   });
-})
-  .listen(
-    12345,
-    () => {
-      const address = fileServer.address();
-      console.info(
-        `File server is running at ${address.family} ${address.address}:${address.port}`
-      );
-    }
-  )
-  .on("error", logCritical);
+}
 
 process.on('uncaughtExceptionMonitor', err => {
   logCritical("There was an uncaught error");
   logCritical(err);
 });
 
+process.on("SIGINT", () => {
+  servers.http.close();
+  servers.https.close();
+  tcpServer.close();
+});
+
 function logCritical(entry) {
+  console.error(entry);
   log.critical.write(
-    entry.concat("\n")
+    String(entry).concat("\n")
   );
 }
 
@@ -187,9 +243,9 @@ function etag(stats) {
   return `"${stats.mtime.getTime().toString(16)}-${stats.size.toString(16)}"`;
 }
 
-function isInRange (...ranges) {
+function isInRange(...ranges) {
   for (let i = 0; i < ranges.length - 1; i++) {
-    if(ranges[i] >= ranges[i + 1]) {
+    if (ranges[i] >= ranges[i + 1]) {
       return false;
     }
   }
