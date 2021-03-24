@@ -5,7 +5,7 @@ import { createServer as net_server } from "net";
 import { extname, basename, join, normalize, dirname } from "path";
 import { inspect } from "util";
 import { pipeline } from "stream";
-import mime from "./mime.js";
+import mime from "./src/mime.js";
 import pathMap from "./path-map.db.js";
 import { fileURLToPath } from "url";
 
@@ -27,8 +27,8 @@ const log = {
 const servers = {
   https: https_server(
     {
-      key: readFileSync("./cert.key"),
-      cert: readFileSync("./cert.pem")
+      key: readFileSync("./src/cert.key"),
+      cert: readFileSync("./src/cert.pem")
     },
     requestListener
   ).on("error", logCritical),
@@ -74,7 +74,7 @@ function requestListener (req, res) {
     url.pathname = url.pathname.concat("index.html");
 
   const filepath = url.pathname === "/index.html"
-    ? join(__dirname, "./index.html")
+    ? join(__dirname, "./src/index.html")
     : toLocalPath(
           map.has(url.pathname)
             ? map.get(url.pathname)
