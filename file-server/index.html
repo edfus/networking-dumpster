@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>File-Server.local</title>
+  <style>
+    section {
+      display: flex;
+      flex-direction: row;
+      column-gap: 2rem;
+      justify-content: center;
+    }
+  </style>
+</head>
+
+<body>
+  <main style="margin: 10% auto;">
+    <section>
+      <div>
+        <label for="get-file-input">What do you want?</label>
+        <input type="search" id="get-file-input" name="q" checked>
+        <button id="download-button">download</button>
+
+        <div>
+          <input type="checkbox" id="is-range-request" name="r">
+          <label for="is-range-request">Use multithreaded download</label>
+
+          <span id="threads-count-wrapper" style="visibility: visible;">
+            <input type="range" id="threads-count" name="t" min="4" max="32" value="12" step="2"
+              style="visibility: inherit;">
+            <label for="threads-count" style="visibility: inherit;">12 threads</label>
+            <small id="multithreads-attention" style="visibility: inherit; display: block; padding-left: 1.6rem;">
+              Attention: multithreaded download will consume up to 384 MiB RAM
+            </small>
+          </span>
+        </div>
+      </div>
+      <div>
+        <div style="display: flex; justify-content: space-between;">
+          <label for="log">Output log:</label>
+          <input type="reset" id="clear-log" value="Clear" style="font-size: 0.6rem;">
+        </div>
+        <textarea id="log" name="log" rows="5" cols="33" placeholder="It was a dark and stormy night...">$: </textarea>
+      </div>
+    </section>
+    <section>
+      <input id="file-uploader" type="file" />
+    </section>
+  </main>
+</body>
+<script>
+  const map = { "true": "visible", "false": "hidden" };
+  const isRangeRequest = document.getElementById("is-range-request");
+  const threadsCountWrapper = document.getElementById("threads-count-wrapper");
+
+  isRangeRequest.onchange = () => {
+    threadsCountWrapper.style.visibility = map[
+      String(Boolean(isRangeRequest.checked))
+    ];
+    localStorage["isRangeRequest.checked"] = String(Boolean(isRangeRequest.checked));
+  };
+
+  isRangeRequest.checked = localStorage["isRangeRequest.checked"] !== "false";
+  isRangeRequest.onchange();
+
+  const threadsSelector = document.getElementById("threads-count");
+  const threadsSelectorLabel = threadsSelector.parentNode.querySelector('label[for="threads-count"]');
+  const multithreadsAttention = threadsSelector.parentNode.querySelector('#multithreads-attention');
+  threadsSelector.onchange = () => {
+    const v = threadsSelector.value.length === 1 ? "&nbsp;&nbsp;".concat(threadsSelector.value) : threadsSelector.value;
+    threadsSelectorLabel.innerHTML = `${v} threads`;
+    multithreadsAttention.innerText =
+      multithreadsAttention.innerText.replace(/\d+(?=\sMiB\sRAM$)/i, Number(threadsSelector.value) * 32)
+    ;
+    localStorage["threadsSelector.value"] = threadsSelector.value;
+  }
+  threadsSelector.value = Number(localStorage["threadsSelector.value"]);
+  threadsSelector.onchange();
+  const pathInput = document.getElementById("get-file-input");
+  //TODO pathInput.list
+  const log = document.getElementById("log");
+
+  document.getElementById("clear-log").addEventListener("click", () => log.value = "$: ", { passive: true });
+  document.getElementById("download-button").addEventListener("click", download, { passive: true });
+  pathInput.addEventListener("keyup", e => e.key === "Enter" && download());
+  
+  function download() {
+    if (!pathInput.value)
+      return logAppend("input required.");
+    const pathname = pathInput.value
+      .replace("\\", "/")
+      .replace(/\s/, "+")
+      .replace(/^([^\/])/, "/$1")
+      ;
+
+    const url = new URL(pathname, `${location.protocol}//${location.host}`);
+    url.searchParams.set("download", 1);
+
+    if (isRangeRequest.checked) {
+      fetch(
+        url,
+        {
+          method: "HEAD",
+          headers: new Headers({
+            range: "0-"
+          })
+        }
+      ).then(
+        async res => {
+          if(res.status !== 206) {
+            return logAppend(url.pathname,`${res.status} ${res.statusText}`);
+          }
+
+          const MiB = 2 ** 20;
+          const contentLength = Number(res.headers.get("Content-Length"));
+          const threads = Number(threadsSelector.value);
+
+          if (contentLength < 32 * MiB * threads) {
+            const gap = Math.floor(contentLength / threads); // concat in Blob directly
+            let offset = 0;
+            return Promise.all(
+              new Array(threads).fill(void 0)
+                .map(
+                  (v, i) => new Promise((resolve, reject) => {
+                    const start = offset;
+                    const end = i === threads - 1 ? "" : (offset += gap) - 1;
+                    const cb = () => void 0;
+                    rangeRequest(url, start, end, cb)
+                      .catch(err => rangeRequest(url, start, end, cb))  // retry
+                      .then(arrayBuffer => resolve(arrayBuffer))
+                      .catch(reject)
+                    ;
+                  })
+                )
+            ).then(
+              results => {
+                const contentType = res.headers.get("Content-Type").split(";")[0];
+                
+                const link = URL.createObjectURL(new Blob(results, { type: contentType }));
+                const a = document.createElement("A");
+                a.href = link;
+                a.download = res.headers.get("Content-Disposition").replace(
+                  /^attachment;\sfilename="(.+)?"/,
+                  (whole, filename) => decodeURIComponent(filename)
+                );
+                a.click();
+              }
+            ).catch(err => logAppend(url.pathname, err.message))
+          } else {
+            
+          }
+        }
+      ).catch(err => logAppend(url.pathname, err.message))
+    } else {
+      const iframe = document.createElement('IFRAME');
+      iframe.hidden = true;
+      iframe.src = url;
+      iframe.addEventListener('load', () => {
+        logAppend(url.pathname, iframe.contentDocument.body.textContent);
+        iframe.remove();
+      }, { once: true });
+      document.body.appendChild(iframe);
+    }
+  }
+
+  function logAppend(...argv) {
+    log.value += argv.join(" ").concat("\n");
+  }
+
+  const debounce = {
+    in: false,
+    timer: -1
+  }
+  const entries = [];
+  const twirl = ["\\", "|", "/", "-"];
+  function logProgress (index, loaded, total) {
+    
+  }
+
+  function appendBuffer(buffer1, buffer2) {
+    const tmp = new Uint8Array(buffer1.byteLength + buffer2.byteLength);
+    tmp.set(new Uint8Array(buffer1), 0);
+    tmp.set(new Uint8Array(buffer2), buffer1.byteLength);
+    return tmp.buffer;
+  };
+
+  async function rangeRequest(url, start, end, progressCb) {
+    return fetch(url, {
+      headers: new Headers({
+        "Range": `bytes=${start}-${end}`,
+        "Connection": "close"
+      })
+    }).then(response => {
+      const reader = response.body.getReader();
+      const total = parseInt(response.headers.get("Content-Length"), 10);
+      let loaded = 0;
+
+      return new Response(
+        new ReadableStream({
+          async start(controller) {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              loaded += value.byteLength;
+              progressCb(loaded, total);
+              controller.enqueue(value);
+            }
+            controller.close();
+          }
+        })
+      ).arrayBuffer();
+    })
+      ;
+  }
+</script>
+
+</html>
