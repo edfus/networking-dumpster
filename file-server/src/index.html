@@ -2,6 +2,7 @@
 <html>
 
 <head>
+  <!-- <meta name="viewport" content="width=device-width,initial-scale=1.5"> -->
   <title>File-Server.local</title>
   <style>
     section {
@@ -48,7 +49,7 @@
     </section>
   </main>
 </body>
-<script>
+<script type="module">
   const map = { "true": "visible", "false": "hidden" };
   const isRangeRequest = document.getElementById("is-range-request");
   const threadsCountWrapper = document.getElementById("threads-count-wrapper");
@@ -80,10 +81,13 @@
   //TODO pathInput.list
   const log = document.getElementById("log");
 
-  document.getElementById("clear-log").addEventListener("click", () => log.value = "$: ", { passive: true });
+  document.getElementById("clear-log").addEventListener("click", () => log.value = "$:", { passive: true });
   document.getElementById("download-button").addEventListener("click", download, { passive: true });
   pathInput.addEventListener("keyup", e => e.key === "Enter" && download());
   
+
+  let createWriteStream = null; //
+
   function download() {
     if (!pathInput.value)
       return logAppend("input required.");
@@ -127,7 +131,7 @@
                     const cb = () => void 0;
                     rangeRequest(url, start, end, cb)
                       .catch(err => rangeRequest(url, start, end, cb))  // retry
-                      .then(arrayBuffer => resolve(arrayBuffer))
+                      .then(res => resolve(res.arrayBuffer()))
                       .catch(reject)
                     ;
                   })
@@ -147,7 +151,21 @@
               }
             ).catch(err => logAppend(url.pathname, err.message))
           } else {
-            
+            if(!createWriteStream) {
+              createWriteStream = (await import("/stream-saver/index.js")).createWriteStream;
+            }
+
+            const gap = 32 * MiB;
+            const cb = () => void 0;
+            const fileStream = createWriteStream(res.headers);
+
+            const iterator = rangeYielder(url, gap, contentLength, cb);
+            let ret = iterator.next();
+            do {
+              const response = await ret.value;
+              await response.body.pipeTo(fileStream, { preventClose: true });
+            } while (!(ret = iterator.next()).done);
+            fileStream.close();
           }
         }
       ).catch(err => logAppend(url.pathname, err.message))
@@ -173,22 +191,16 @@
   }
   const entries = [];
   const twirl = ["\\", "|", "/", "-"];
+  const icons = ["☀️", "☀️", "☀️", "🌤", "⛅️", "🌥", "☁️", "🌧", "🌨", "🌧", "🌨", "🌧", "🌨", "⛈", "🌨", "🌧", "🌨", "☁️", "🌥", "⛅️", "🌤", "☀️", "☀️ "];
   function logProgress (index, loaded, total) {
     
   }
-
-  function appendBuffer(buffer1, buffer2) {
-    const tmp = new Uint8Array(buffer1.byteLength + buffer2.byteLength);
-    tmp.set(new Uint8Array(buffer1), 0);
-    tmp.set(new Uint8Array(buffer2), buffer1.byteLength);
-    return tmp.buffer;
-  };
 
   async function rangeRequest(url, start, end, progressCb) {
     return fetch(url, {
       headers: new Headers({
         "Range": `bytes=${start}-${end}`,
-        "Connection": "close"
+        "Connection": "keep-alive"
       })
     }).then(response => {
       const reader = response.body.getReader();
@@ -208,9 +220,21 @@
             controller.close();
           }
         })
-      ).arrayBuffer();
+      );
     })
-      ;
+  ;
+  }
+
+  function * rangeYielder(url, gap, contentLength, progressCb) {
+    for (let offset = 0;;) {
+      const start = offset;
+      const end = (offset += gap) - 1;
+
+      if(end >= contentLength) {
+        return yield rangeRequest(url, start, "", progressCb);
+      }
+      yield rangeRequest(url, start, end, progressCb);
+    }
   }
 </script>
 
