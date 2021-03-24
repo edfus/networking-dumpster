@@ -12,12 +12,6 @@ import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-function toLocalPath(path) {
-  return join(__dirname, "./files.hidden", normalize(decodeURIComponent(path)));
-}
-
-const map = pathMap;
-
 const log = {
   error: createWriteStream("./error.log.txt", { flags: "a" }),
   info: createWriteStream("./info.log.txt", { flags: "a" }),
@@ -27,8 +21,8 @@ const log = {
 const servers = {
   https: https_server(
     {
-      key: readFileSync("./src/cert.key"),
-      cert: readFileSync("./src/cert.pem")
+      key: readFileSync("./.secrets/server.key"),
+      cert: readFileSync("./.secrets/server.crt")
     },
     requestListener
   ).on("error", logCritical),
@@ -64,23 +58,38 @@ net_server(socket => {
 
 const implementedMethods = ["GET", "PUT", "HEAD"];
 
+const router = [
+  pathname => pathname.endsWith("/") ? pathname.concat("index.html") : pathname,
+  pathname => {
+    if(/^\/index.html?$/.test(pathname))
+      return { done: true, value: join(__dirname, "./src/index.html") }
+    return { done: false, value: pathname };
+  },
+  pathname => decodeURIComponent(pathname).replace(/\+/g, " "),
+  pathname => pathMap.has(pathname) ? pathMap.get(pathname) : pathname,
+  pathname => {
+    if(/^\/stream-saver\//.test(pathname)) 
+      return {
+        done: true,
+        value: join(__dirname, "./lib/", normalize(pathname))
+      }
+    return { done: false, value: pathname };
+  },
+  pathname => {
+    return {
+      done: true,
+      value: join(__dirname, "./files.hidden", normalize(pathname))
+    }
+  }
+];
+
 function requestListener (req, res) {
   if (!implementedMethods.includes(req.method.toUpperCase()))
     return res.writeHead(501).end();
 
-  const url = new URL(req.url, `http://${req.headers.host || "[::]"}`);
+  const url = new URL(req.url, `https://${req.headers.host || "[::]"}`);
 
-  if (url.pathname.endsWith("/"))
-    url.pathname = url.pathname.concat("index.html");
-
-  const filepath = url.pathname === "/index.html"
-    ? join(__dirname, "./src/index.html")
-    : toLocalPath(
-          map.has(url.pathname)
-            ? map.get(url.pathname)
-            : url.pathname
-        ).replace(/\+/g, " ")
-  ;
+  const filepath = getRoute(url.pathname, router);
 
   const isDownload = url.searchParams.get("d") || url.searchParams.get("download");
 
@@ -214,6 +223,18 @@ process.on("SIGINT", () => {
   servers.https.close();
   tcpServer.close();
 });
+
+function getRoute (pathname, router) {
+  let ret = pathname;
+  for (const callback of router) {
+    ret = callback(ret);
+    if(ret.done)
+      return ret.value;
+    ret = ret.value || ret;
+  }
+
+  return typeof ret === "object" ? ret.value : ret;
+}
 
 function logCritical(entry) {
   console.error(entry);
