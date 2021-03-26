@@ -1,16 +1,16 @@
-import { stat, createWriteStream, createReadStream, readFileSync } from "fs";
+import { stat, createWriteStream, createReadStream, readFileSync, readdir } from "fs";
 import { createServer as https_server } from "https";
 import { createServer as http_server } from "http";
 import { createServer as net_server } from "net";
-import { extname, basename, join, normalize, dirname } from "path";
+import { extname, basename, join, normalize, dirname, sep } from "path";
 import { inspect } from "util";
 import { pipeline } from "stream";
 import mime from "./src/mime.js";
 import pathMap from "./path-map.db.js";
 import { fileURLToPath } from "url";
 
-
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const local = (...paths) => join(__dirname, ...paths.map(p => normalize(p)));
 
 const log = {
   error: createWriteStream("./error.log.txt", { flags: "a" }),
@@ -57,31 +57,47 @@ net_server(socket => {
 ;
 
 const implementedMethods = ["GET", "PUT", "HEAD"];
+const cache = new Map();
 
-const router = [
-  pathname => pathname.endsWith("/") ? pathname.concat("index.html") : pathname,
-  pathname => {
-    if(/^\/index.html?$/.test(pathname))
-      return { done: true, value: join(__dirname, "./src/index.html") }
-    return { done: false, value: pathname };
-  },
+const commonRouter = [
   pathname => decodeURIComponent(pathname).replace(/\+/g, " "),
   pathname => pathMap.has(pathname) ? pathMap.get(pathname) : pathname,
+];
+
+const fsRouter = [
+  // pathname => normalize(pathname)
+];
+
+const fileRouter = [
+  pathname => pathname.endsWith("/") ? pathname.concat("index.html") : pathname,
+  pathname => {
+    if(/\/index.html?$/.test(pathname))
+      return {
+        done: true,
+        value: local("./src/index.html")
+      };
+    return pathname;
+  },
   pathname => {
     if(/^\/stream-saver\//.test(pathname)) 
       return {
         done: true,
-        value: join(__dirname, "./lib/", normalize(pathname))
+        value: local("./lib/", pathname)
       }
     return { done: false, value: pathname };
   },
   pathname => {
     return {
       done: true,
-      value: join(__dirname, "./files.hidden", normalize(pathname))
+      value: local("./files.hidden", pathname)
     }
   }
 ];
+
+const dirRouter = [
+  pathname => pathname.endsWith("/") ? pathname : pathname.concat("/"),
+  pathname => local("./files.hidden", pathname),
+]
 
 function requestListener (req, res) {
   if (!implementedMethods.includes(req.method.toUpperCase()))
@@ -89,9 +105,62 @@ function requestListener (req, res) {
 
   const url = new URL(req.url, `https://${req.headers.host || "[::]"}`);
 
-  const filepath = getRoute(url.pathname, router);
+  const pathname = getRoute(url.pathname, commonRouter);
 
   const isDownload = url.searchParams.get("d") || url.searchParams.get("download");
+  const dirToList  = url.searchParams.get("l") || url.searchParams.get("list");
+
+  if(pathname === "/api") {
+    if(req.method.toUpperCase() !== "GET") {
+      return res.writeHead(400).end("Wrong Method");
+    }
+
+    if(dirToList) {
+      const dirpath = getRoute(dirToList, commonRouter, fsRouter, dirRouter);
+
+      if(cache.has(dirpath)) {
+        const cached = cache.get(dirpath);
+        if(Date.now() - cached.createdAt > cached.maxAge) {
+          cache.delete(dirpath);
+        } else {
+          return res.writeHead(200, { "Content-Type": "application/json" }).end(cached.value);
+        }
+      }
+        
+      return readdir(dirpath, { withFileTypes: true }, (err, files) => {
+        if (err) {
+          logError(err, req);
+          switch (err.code) {
+            case "ENAMETOOLONG":
+            case "ENOENT":
+            case "ENOTDIR":
+              return res.writeHead(404).end("Not Found");
+            default:
+              return res.writeHead(500).end(err.message);
+          }
+        }
+
+        const result = JSON.stringify(
+          files.map(dirent => {
+            if(dirent.isFile()) {
+              return dirToList.concat(dirent.name);
+            }
+            return false; // dirent.isDirectory ...
+          }).filter(s => s)
+        );
+
+        cache.set(dirpath, {
+          createdAt: Date.now(),
+          maxAge: 60 * 1000, // 60 seconds
+          value: result
+        });
+        logInfo(`Serving folder list to ${req.socket.remoteAddress}:${req.socket.remotePort} succeeded`)
+        return res.writeHead(200, { "Content-Type": "application/json" }).end(result);
+      });
+    }
+  }
+
+  const filepath = getRoute(pathname, fsRouter, fileRouter);
 
   stat(filepath, (err, stats) => {
     if (err) {
@@ -122,19 +191,16 @@ function requestListener (req, res) {
     if (type === "text/plain")
       logCritical(`!mime[${fileExtname}] for ${filename}`);
 
-    const lastModified = stats.mtime.toUTCString();
+    const lastModified = stats.mtimeMs;
     const eTag = etag(stats);
 
     // conditional request
     if (
-      (
-        req.headers["if-none-match"] &&
-        req.headers["if-none-match"] !== eTag
-      )
+      req.headers["if-none-match"] === eTag
       ||
       (
         req.headers["last-modified"] &&
-        req.headers["last-modified"] < lastModified
+        Number(req.headers["last-modified"]) > lastModified
       )
     ) {
       return res.writeHead(304).end("Not Modified");
@@ -224,13 +290,18 @@ process.on("SIGINT", () => {
   tcpServer.close();
 });
 
-function getRoute (pathname, router) {
+function getRoute (pathname, ...routers) {
   let ret = pathname;
-  for (const callback of router) {
-    ret = callback(ret);
-    if(ret.done)
-      return ret.value;
-    ret = ret.value || ret;
+
+  for(const router of routers) {
+    for (const callback of router) {
+      ret = callback(ret);
+      if(ret.done) {
+        ret = ret.value;
+        break;
+      }
+      ret = ret.value || ret;
+    }
   }
 
   return typeof ret === "object" ? ret.value : ret;

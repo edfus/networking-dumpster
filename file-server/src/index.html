@@ -51,9 +51,9 @@
     <section>
       <div>
         <label for="get-file-input">What do you want?</label>
-        <input type="search" id="get-file-input" name="q" checked>
+        <input type="search" id="get-file-input" name="q" pattern="[^|>&*']*" list="get-file-input-datalist">
         <button id="download-button">download</button>
-
+        <datalist id="get-file-input-datalist"></datalist>
         <div>
           <input type="checkbox" id="is-range-request" name="r">
           <label for="is-range-request">Use multithreaded download</label>
@@ -109,8 +109,9 @@
   }
   threadsSelector.value = Number(localStorage["threadsSelector.value"]);
   threadsSelector.onchange();
+
   const pathInput = document.getElementById("get-file-input");
-  //TODO pathInput.list
+                    setList(document.getElementById("get-file-input-datalist"));
   const log = document.getElementById("log");
 
   log.value = "$: ";
@@ -209,6 +210,7 @@
         }
       ).then(
         async res => {
+          listenBeforeUnload();
           clearInterval(intervalTimer);
           titleLogger.close();
           ProgressLog.instance.bar(`Downloading ${url.pathname}...`);
@@ -222,14 +224,15 @@
           const threads = Number(threadsSelector.value);
 
           if (contentLength < 32 * MiB * threads) {
-            const gap = Math.floor(contentLength / threads); // concat in Blob directly
+            const gap = Math.max(Math.floor(contentLength / threads), 8 * MiB); // concat in Blob directly
             let offset = 0;
             return Promise.all(
-              new Array(threads).fill(void 0)
+              new Array(Math.ceil(contentLength / gap)).fill(void 0)
                 .map(
                   (v, i) => new Promise((resolve, reject) => {
                     const start = offset;
-                    const end = i === threads - 1 ? "" : (offset += gap) - 1;
+                    let end = (offset += gap) - 1;
+                    if(end >= contentLength) end = "";
                     rangeRequest(url, start, end)
                       .catch(err => rangeRequest(url, start, end))  // retry
                       .then(res => res.arrayBuffer())
@@ -300,7 +303,8 @@
           ProgressLog.instance.close();
           console.error(err);
           setTimeout(() => logAppend(url.pathname, err.message), 20);
-        });
+        })
+        .finally(removeBeforeUnloadListener)
     } else {
       const iframe = document.createElement('IFRAME');
       iframe.hidden = true;
@@ -361,6 +365,34 @@
       }
       yield rangeRequest(url, start, end);
     }
+  }
+
+  const beforeUnloadHandler = event => {
+    event.preventDefault();
+    return event.returnValue = "Are you sure you want to exit?";
+  };
+  function listenBeforeUnload () {
+    window.addEventListener("beforeunload", beforeUnloadHandler);
+  }
+  function removeBeforeUnloadListener () {
+    window.removeEventListener("beforeunload", beforeUnloadHandler);
+  }
+
+  function setList (dataList) {
+    fetch(
+      new URL(`${location.protocol}//${location.host}/api?list=${encodeURIComponent("/")}`)
+    )
+    .then(res => {
+      if(res.status === 200)
+        return res.text();
+      throw new Error(`${res.status} ${res.statusText}`);
+    })
+    .then(
+      rawJSON => {
+        const files = JSON.parse(rawJSON);
+        dataList.innerHTML = files.map(file => `<option value="${file}">`);
+      }
+    );
   }
 </script>
 
