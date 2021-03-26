@@ -27,7 +27,8 @@
       padding: 0.0625rem .125rem
     }
 
-    button, input[type=reset] {
+    button,
+    input[type=reset] {
       padding: 0.0625rem .375rem
     }
 
@@ -37,11 +38,20 @@
       font-size: 0.8rem;
     }
 
-    input[type=range], input[type=checkbox] {
+    input[type=range],
+    input[type=checkbox] {
       transform: scale(1.6);
     }
+
     input[type=range] {
       margin: 0 1.4rem;
+    }
+
+    #file-uploader {
+      outline: dashed 1px rgba(118, 118, 118, .5);
+    }
+    #file-uploader:focus {
+      outline: solid;
     }
   </style>
 </head>
@@ -76,8 +86,26 @@
         <textarea id="log" name="log" rows="5" cols="33" placeholder="It was a dark and stormy night..."></textarea>
       </div>
     </section>
-    <section>
-      <input id="file-uploader" type="file" />
+    <section style="margin-top: 7rem;">
+      <div>
+        <label for="file-uploader">...Or Upload file</label>
+        <input id="file-uploader" type="file"/>
+        <span>to</span>
+        <input id="upload-target" type="text" placeholder="optional" minlength="1" maxlength="40" size="25" />
+        <section style="margin-top: 1rem">
+          <div>
+            <label for="username" style="display: inline-block; width: 5rem;">Username:</label>
+            <input type="text" id="username" name="username">
+  
+            <div>
+              <label for="pass" style="display: inline-block; width: 5rem;">Password:</label>
+              <input type="password" id="password" name="password" minlength="8" required>
+            </div>
+          </div>
+
+          <button type="submit" id="upload-button">upload</button>
+        </section>
+      </div>
     </section>
   </main>
 </body>
@@ -111,7 +139,8 @@
   threadsSelector.onchange();
 
   const pathInput = document.getElementById("get-file-input");
-                    setList(document.getElementById("get-file-input-datalist"));
+  const dataList = document.getElementById("get-file-input-datalist");
+  setList(dataList);
   const log = document.getElementById("log");
 
   log.value = "$: ";
@@ -232,7 +261,7 @@
                   (v, i) => new Promise((resolve, reject) => {
                     const start = offset;
                     let end = (offset += gap) - 1;
-                    if(end >= contentLength) end = "";
+                    if (end >= contentLength) end = "";
                     rangeRequest(url, start, end)
                       .catch(err => rangeRequest(url, start, end))  // retry
                       .then(res => res.arrayBuffer())
@@ -371,29 +400,90 @@
     event.preventDefault();
     return event.returnValue = "Are you sure you want to exit?";
   };
-  function listenBeforeUnload () {
+  function listenBeforeUnload() {
     window.addEventListener("beforeunload", beforeUnloadHandler);
   }
-  function removeBeforeUnloadListener () {
+  function removeBeforeUnloadListener() {
     window.removeEventListener("beforeunload", beforeUnloadHandler);
   }
 
-  function setList (dataList) {
+  function setList(dataList) {
     fetch(
       new URL(`${location.protocol}//${location.host}/api?list=${encodeURIComponent("/")}`)
     )
-    .then(res => {
-      if(res.status === 200)
-        return res.text();
-      throw new Error(`${res.status} ${res.statusText}`);
-    })
-    .then(
-      rawJSON => {
-        const files = JSON.parse(rawJSON);
-        dataList.innerHTML = files.map(file => `<option value="${file}">`);
-      }
-    );
+      .then(res => {
+        if (res.status === 200)
+          return res.text();
+        throw new Error(`${res.status} ${res.statusText}`);
+      })
+      .then(
+        rawJSON => {
+          const files = JSON.parse(rawJSON);
+          dataList.innerHTML = files.map(file => `<option value="${file}">`);
+        }
+      );
   }
+
+  const fileSelect = document.getElementById("file-uploader");
+  const uploadDestination = document.getElementById("upload-target");
+  const username = document.getElementById("username");
+  const password = document.getElementById("password");
+  const uploadButton = document.getElementById("upload-button");
+
+  username.addEventListener("keyup", event => {
+    if(event.key === "ArrowDown" || event.key === "Enter") {
+      password.focus();
+    }
+  });
+
+  password.addEventListener("keyup", event => {
+    if(event.key === "ArrowUp") {
+      username.focus();
+    }
+    if(event.key === "Enter") {
+      uploadButton.click();
+    }
+  });
+
+  if(localStorage["username"])
+    username.value = localStorage["username"];
+
+  uploadButton.addEventListener("click", () => {
+    if(
+      !fileSelect.files.length
+      || 
+      !username.value
+      ||
+      !password.value
+    )
+      return logAppend("input required");
+
+    localStorage["username"] = username.value;
+
+    const file = fileSelect.files[0];
+    let destination = uploadDestination.value || file.name;
+    if(!/\.[^\\/]+$/.test(destination) && /\.[^\\/]+$/.test(file.name)) {
+      destination = destination.concat(file.name.match(/\.[^\\/]+$/)[0]);
+    } // add extension
+    fetch(
+      new URL(`https://${location.host}/upload?path=${encodeURIComponent(destination)}`),
+      {
+        method: "PUT",
+        body: file,
+        headers: {
+          "Authorization": `Basic ${btoa(`${username.value}:${password.value}`)}`,
+          "Content-Type": file.type,
+          "Content-Length": file.size
+        }
+      }
+    ).then(async res => {
+      if([200, 204, 201].includes(res.status))
+        logAppend(`Uploaded '${destination}' to ${res.headers.get("Content-Location")} - ${res.status} ${await res.text() || res.statusText}`)
+      else throw new Error(`${res.status} ${await res.text() || res.statusText}`)  
+    })
+      .catch(err => logAppend(`Upload '${uploadDestination.value}' errored: ${err.message}`))
+      .then(() => setList(dataList))
+  })
 </script>
 
 </html>

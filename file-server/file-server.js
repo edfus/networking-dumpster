@@ -1,4 +1,4 @@
-import { stat, createWriteStream, createReadStream, readFileSync, readdir } from "fs";
+import { stat, createWriteStream, createReadStream, readFileSync, readdir, exists, existsSync } from "fs";
 import { createServer as https_server } from "https";
 import { createServer as http_server } from "http";
 import { createServer as net_server } from "net";
@@ -58,6 +58,7 @@ net_server(socket => {
 
 const implementedMethods = ["GET", "PUT", "HEAD"];
 const cache = new Map();
+const mimeCache = new Map();
 
 const commonRouter = [
   pathname => decodeURIComponent(pathname).replace(/\+/g, " "),
@@ -65,7 +66,7 @@ const commonRouter = [
 ];
 
 const fsRouter = [
-  // pathname => normalize(pathname)
+  pathname => pathname.replace(/<|>|:|"|\||\?|\*/g, "-")
 ];
 
 const fileRouter = [
@@ -109,10 +110,11 @@ function requestListener (req, res) {
 
   const isDownload = url.searchParams.get("d") || url.searchParams.get("download");
   const dirToList  = url.searchParams.get("l") || url.searchParams.get("list");
+  const uploadTarget = url.searchParams.get("p") || url.searchParams.get("path");
 
   if(pathname === "/api") {
     if(req.method.toUpperCase() !== "GET") {
-      return res.writeHead(400).end("Wrong Method");
+      return res.writeHead(405).end("Expected Method GET");
     }
 
     if(dirToList) {
@@ -151,13 +153,85 @@ function requestListener (req, res) {
 
         cache.set(dirpath, {
           createdAt: Date.now(),
-          maxAge: 60 * 1000, // 60 seconds
+          maxAge: 10 * 1000, // 10 seconds
           value: result
         });
         logInfo(`Serving folder list to ${req.socket.remoteAddress}:${req.socket.remotePort} succeeded`)
         return res.writeHead(200, { "Content-Type": "application/json" }).end(result);
       });
     }
+    return res.writeHead(400).end("Folder path required.");
+  }
+
+  if(pathname === "/upload") {
+    if(req.method.toUpperCase() !== "PUT") {
+      return res.writeHead(405).end("Expected Method PUT");
+    }
+
+    if(!auth(req, res))
+      return ;
+
+    if (uploadTarget) {
+      if(uploadTarget.replace(/[^/]/g, "").length > 1)
+        return res.writeHead(403, "Forbidden").end("You DO NOT have the permission to create folders")
+      
+      let destination = uploadTarget;
+
+      if(!/\.[^\\/]+$/.test(destination) && req.headers["content-type"]) {
+        const contentType = req.headers["content-type"];
+        if(mimeCache.has(contentType)) {
+          destination = destination.concat(mimeCache.get(contentType));
+        } else {
+          for (const key of Object.keys(mime)) {
+            if(mime[key] === contentType) {
+              mimeCache.set(contentType, key);
+              destination = destination.concat(key);
+              break;
+            }
+          }
+        }
+      }
+
+      const filepath = getRoute(destination, fsRouter, fileRouter);
+
+      if(existsSync(filepath)) {
+        return stat(filepath, (err, stats) => {
+          if (err) {
+            logError(err, req);
+            return res.writeHead(500).end(err.message);
+          }
+      
+          if (!stats.isFile()) {
+            return res.writeHead(403, "Forbidden").end("A directory entry already exists.");
+          }
+
+          res.writeHead(200, {
+            "Content-Location": destination
+          }).end(`Modified ${destination}`);
+
+          return pipeline(
+            req,
+            createWriteStream(filepath, { flags: "w" }),
+            error => error
+              ? logError(error, req)
+              : logInfo(`Modifying ${filepath} for ${req.socket.remoteAddress}:${req.socket.remotePort} succeeded`)
+          );
+        });
+      } else {
+        res.writeHead(201, {
+          "Content-Location": destination
+        }).end(`Created ${destination}`);
+
+        return pipeline(
+          req,
+          createWriteStream(filepath, { flags: "w" }),
+          error => error
+            ? logError(error, req)
+            : logInfo(`Creating ${filepath} for ${req.socket.remoteAddress}:${req.socket.remotePort} succeeded`)
+        );
+      }
+    }
+    return res.writeHead(400).end("Destination path required.");
   }
 
   const filepath = getRoute(pathname, fsRouter, fileRouter);
@@ -341,5 +415,23 @@ function isInRange(...ranges) {
       return false;
     }
   }
+  return true;
+}
+
+const basicAuth = readFileSync(join(__dirname, "./.secrets", "basic-auth")).toString("base64");
+
+function auth (req) {
+  const authorization = req.headers["authorization"];
+
+  if (!authorization) {
+    res.writeHead(401).end("Authorization required");
+    return false;
+  }
+
+  if(authorization !== `Basic ${basicAuth}`) {
+    res.writeHead(401).end("Wrong username or password");
+    return false;
+  }
+
   return true;
 }
