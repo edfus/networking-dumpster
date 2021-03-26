@@ -16,16 +16,16 @@ import { Transform } from "stream";
  */
 const kSource = Symbol("source");
 
+/**
+ * emit: ping, pong, opclose
+ */
 class Parser extends Transform {
   constructor () {
     super({
       readableObjectMode: true
     });
 
-    this[kSource] = {
-      payloadData: Buffer.from(""),
-      type: "text"
-    };
+    this.flush();
   }
 
   _transform(chunk, encoding, cb) {
@@ -56,7 +56,7 @@ class Parser extends Transform {
 
     const endOffset = startOffset + frame.payloadLength;
     if(chunk.length < endOffset) {
-      return cb(new RangeError(`Expected chunk.length >= ${endOffset}`));
+      return cb(new RangeError(`expected chunk.length >= ${endOffset}`));
     }
 
     // get payload data
@@ -124,9 +124,9 @@ class Parser extends Transform {
         }
       
       case 0x8:
-        this[kSource] = null;
+        this.flush();
         this.emit("opclose", frame);
-        return this.end(cb); // close the writable side
+        return cb();
       case 0x9:
         return this.emit("ping", frame);
       case 0xA:
@@ -136,26 +136,81 @@ class Parser extends Transform {
     }
   }
 
-  _flush(cb) {
-    this[kSource] = null;
-    return cb();
+  flush () {
+    this[kSource] = {
+      payloadData: Buffer.from(""),
+      type: "text"
+    };
   }
 }
 
-// act like a reverse proxy agent
 class Receiver extends EventEmitter {
-  constructor (webSocket) {
+  constructor (webSocket, parserDataHandler = this._chunkToString) {
+    this.parserDataHandler = parserDataHandler;
+    this.listen(webSocket);
+  }
+
+  listen (webSocket) {
     this.parser = new Parser();
     this.ws = webSocket;
     this.ws.pipe(this.parser);
-
-    this.ws.on("error", err => {})
-
-
-    this.emit("")
+    this.ws.once("error", err => {
+      this.ws.unpipe(this.parser);
+      this.ws = null;
+      this.parser.flush();
+      this.emit("error", err);
+    });
+    this.parser
+      .once("error", err => {
+        this.ws.unpipe(this.parser);
+        this.ws.destroy();
+        this.ws = null;
+        this.parser.flush();
+        this.emit("error", err);
+      })
+      .on("ping", frame => {
+        this.emit("ping", frame.payloadData);
+      })
+      .on("opclose", frame => {
+        this.ws.unpipe(this.parser);
+        this.ws.end();
+        this.ws = null;
+        this.parser.flush();
+        this.parserDataHandler(
+          frame,
+          this._cb(data => {
+            this.emit("close", data);
+            process.nextTick(this.emit("free"));
+          })
+        );
+      })
+      .on("data", frame => {
+        this.parserDataHandler(
+          frame,
+          this._cb(data => this.emit("data", data))
+        );
+      });
   }
 
-  _parserDataHandler () {
+  _chunkToString ({ payloadData: chunk, type }, cb) {
+    if(type === "binary")
+      return cb(null, chunk);
+    return cb(null, chunk.toString());
+  }
 
+  _cb (then) {
+    return (err, data) => {
+      if(err) return this.emit("error", err);
+
+      return then(data);
+    };
   }
 }
+
+class ReceiverCluster {
+  constructor (min = 1, max = 4) {
+    
+  }
+}
+
+export default Receiver;

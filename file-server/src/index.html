@@ -140,6 +140,7 @@
 
   const pathInput = document.getElementById("get-file-input");
   const dataList = document.getElementById("get-file-input-datalist");
+  pathInput.addEventListener("focus", () => setList(dataList));
   setList(dataList);
   const log = document.getElementById("log");
 

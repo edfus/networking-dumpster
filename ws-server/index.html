@@ -1,11 +1,11 @@
-<!DOCType html>
+<!DOCTYPE html>
 <html>
 
 <head>
   <meta charset="utf-8">
   <script async>
-    const socket = new WebSocket('ws://192.168.123.20:9090');
-    socket.onopen = function (event) {
+    const socket = new WebSocket('ws://localhost:22345');
+    socket.onopen = event => {
         console.log('opened');
         socket.send('hello, this is from client');
     };

@@ -8,11 +8,18 @@ import { exec } from "child_process";
 import { createHash } from "crypto";
 import { strictEqual } from "assert";
 
+import Receiver from "./lib/receiver.js";
+import { Cluster } from "./lib/responder.js";
+
+//TODO cluster
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const loggerChannel = channel("logger");
 const log = {
   _root: join(__dirname, "./.log.hidden")
-}
+};
+
+const responderCluster = new Cluster();
 
 const wsServer = createServer((req, res) => {
   res.writeHead(
@@ -54,6 +61,8 @@ const wsServer = createServer((req, res) => {
       'Connection: Upgrade',
       `Sec-WebSocket-Accept: ${key}`,
     ].join('\r\n').concat("\r\n\r\n"));
+
+    responderCluster.assign(new Receiver(socket), socket);
   })
 ;
 
@@ -85,7 +94,8 @@ loggerChannel.subscribe(
     
         if(!(log[message.type] instanceof Writable)) {
           log[message.type] = createWriteStream(
-            join(rootDir, `./${message.type}.log.txt`)
+            join(rootDir, `./${message.type}.log.txt`),
+            { flags: "a" }
           );
         }
     
