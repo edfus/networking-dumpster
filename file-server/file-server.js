@@ -172,7 +172,7 @@ function requestListener (req, res) {
       return ;
 
     if (uploadTarget) {
-      if(uploadTarget.replace(/[^/]/g, "").length > 1)
+      if(normalize(uploadTarget).replace(/[^/\\]/g, "").length > 1)
         return res.writeHead(403, "Forbidden").end("You DO NOT have the permission to create folders")
       
       let destination = uploadTarget;
@@ -403,6 +403,7 @@ function logError(err, req) {
       inspect(err)
     ].join("\n").concat("\n\n")
   );
+  console.error(err);
 }
 
 function etag(stats) {
@@ -420,7 +421,7 @@ function isInRange(...ranges) {
 
 const basicAuth = readFileSync(join(__dirname, "./.secrets", "basic-auth")).toString("base64");
 
-function auth (req) {
+function auth (req, res) {
   const authorization = req.headers["authorization"];
 
   if (!authorization) {
