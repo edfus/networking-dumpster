@@ -181,7 +181,7 @@ class HTTP {
     );
 
     return this._request(uriObject, options, cb)
-      .setHeader("cookie", cookie)
+      .setHeader("cookie", cookie) // returns undefined in 12.9.0
       .prependOnceListener("response", res => this.cookie.add(uriObject.hostname, res))
     ;
   }

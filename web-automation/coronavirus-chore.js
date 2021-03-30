@@ -233,8 +233,10 @@ async function sendData () {
 
 
 async function followRedirect(res) {
-  if (![301, 302].includes(res.statusCode))
+  if (![301, 302, 303, 307, 308].includes(res.statusCode))
     return res;
+
+  res.resume();
 
   if (!res.headers.location)
     throw new Error(logResInfo(res));
