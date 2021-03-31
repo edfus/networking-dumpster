@@ -266,7 +266,7 @@ class Log {
   }
 
   if(shouldPrompt) {
-    questions.forEach(q => 
+    typeof requirements === "object" && questions.forEach(q => 
       q.name in requirements
       ? q.initial = requirements[q.name]
       : void 0
