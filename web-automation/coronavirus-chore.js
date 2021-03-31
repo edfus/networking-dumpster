@@ -35,6 +35,17 @@ series(
   }
 );
 
+// series(
+//   getLoginHTML,
+//   jsdomLogin,
+//   resendUnchecked,
+//   console.info,
+//   err => {
+//     if (err) throw err;
+//     process.exitCode = 0;
+//   }
+// );
+
 async function getLoginHTML() {
   return http.fetch({
     hostname: metadata.hostname,
@@ -101,7 +112,7 @@ async function jsdomLogin(filepath) {
 }
 
 async function getFormModuleId() {
-  let query = "?zt=00&id=";
+  let id; //
   const resultStoreFilepath = join(
     dumpPath,
     `./edit-query-result-${new Date().toLocaleDateString().replace(/\/|\\/g, "-")
@@ -139,7 +150,7 @@ async function getFormModuleId() {
           if (!result.isSuccess)
             return cb(new Error(result.msg));
 
-          query += result.module; //
+          id = result.module; //
 
           if (source instanceof IncomingMessage) {
             createWriteStream(resultStoreFilepath)
@@ -157,13 +168,18 @@ async function getFormModuleId() {
           return reject(err);
         }
 
-        return resolve(query);
+        return resolve(id);
       }
     );
   });
 }
 
-async function createForm(query) {
+async function createForm(id) {
+  if(!id)
+    throw new Error(`createForm received falsy id ${id}`);
+
+  const query = `?zt=00&id=${id}`;
+
   return http.fetch({
       hostname: metadata.hostname,
       path: metadata.formEditPath.concat(query),
@@ -176,24 +192,33 @@ async function createForm(query) {
             () => `createForm failed. ${logResInfo(res)}`
           );
           const filepath = join(dumpPath,"./form-backup.html");
-
+          
           pipeline(
             res,
             createWriteStream(filepath),
-            err => err ? reject(err) : resolve(filepath)
+            err => err ? reject(err) : resolve(id)
           );
         })
       )
   ;
 }
 
-async function sendData () {
+async function sendData (id) {
+  const JSONForm = {
+    info: JSON.stringify({
+      model: {
+        ...metadata.secrets.JSONForm.info.model,
+        id: id
+      }
+    })
+  };
+
   return http.fetch(
     {
       method: "post",
       hostname: metadata.hostname,
       path: metadata.postFormPath,
-      body: stringify(metadata.secrets.JSONForm),
+      body: stringify(JSONForm),
       headers: {
         "Content-type": "application/x-www-form-urlencoded; charset=UTF-8",
         "Accept": "application/json, text/javascript, */*; q=0.01"
@@ -228,9 +253,60 @@ async function sendData () {
         }
       );
     });
-  })
+  });
 }
 
+async function resendUnchecked() {
+  return http.fetch(
+    {
+      method: "post",
+      hostname: metadata.hostname,
+      path: metadata.getSubmittedFormsPath,
+      headers: {
+        "Accept": "application/json, text/javascript, */*; q=0.01"
+      }
+    }
+  ).then(res => {
+    mustStrictEqual(
+      res.statusCode,
+      200,
+      () => `getSubmittedForms failed. ${logResInfo(res)}`
+    );
+
+    return new Promise((resolve, reject) => {
+      pipeline(
+        res,
+        getJSONParser(),
+        new Writable({
+          objectMode: true,
+          write(result, _, cb) {
+            if (!result.isSuccess)
+              return cb(new Error(result.msg));
+            const list = result.module.data;
+
+            Promise.all(
+              list.map(
+                async formDetails => {
+                  if(formDetails.zt !== "01") {
+                    return sendData(formDetails.id)
+                  }
+                }
+              )
+            ).then(() => cb(), cb);
+          }
+        }),
+        err => {
+          if (err) {
+            err.stack += logResInfo(res);
+            return reject(err);
+          }
+  
+          return resolve("resendUnchecked done.");
+        }
+      );
+    });
+  });
+}
 
 async function followRedirect(res) {
   if (![301, 302, 303, 307, 308].includes(res.statusCode))
