@@ -2,6 +2,7 @@
 *.hidden
 *.db.js
 *.dump
+*.cache
 .secrets
 node_modules
 package-lock.json

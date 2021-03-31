@@ -1,13 +1,19 @@
 {
-  "name": "server",
+  "name": "simple-file-server",
   "version": "1.0.0",
   "description": "",
   "type": "module",
   "main": "file-server.js",
+  "bin": {
+    "file-server": "./bin/cmd.js"
+  },
   "scripts": {
-    "serve": "node file-server.js"
+    "serve": "node ./bin/cmd.js"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC"
+  "author": "edfus",
+  "license": "ISC",
+  "optionalDependencies": {
+    "prompts": "^2.4.0"
+  }
 }
