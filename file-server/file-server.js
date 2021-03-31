@@ -4,7 +4,7 @@ import { createServer as http_server } from "http";
 import { createServer as net_server } from "net";
 import { extname, basename, join, normalize, dirname } from "path";
 import { pipeline } from "stream";
-import mime from "./src/mime.js";
+import mime from "./lib/mime.js";
 import pathMap from "./path-map.db.js";
 import { fileURLToPath } from "url";
 
