@@ -307,7 +307,7 @@ class FileServer {
       const type = mime[fileExtname] || "text/plain";
       const charset = "utf8";
 
-      if (type === "text/plain")
+      if (type === "text/plain" && fileExtname !== ".txt") // hacky
         this.logger.critical(`!mime[${fileExtname}] for ${filename}`);
 
       const lastModified = stats.mtimeMs;

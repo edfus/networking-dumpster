@@ -169,13 +169,13 @@ class Log {
     {
       type: 'toggle',
       name: 'useSelfSignedCert',
-      message: 'Use self signed certificate?',
+      message: 'Use default certificate? (self signed)',
       initial: true,
       active: 'Yes',
       inactive: 'No'
     },
     {
-      type: prev => !prev && 'text',
+      type: prev => prev !== true && 'text',
       name: 'cert',
       message: 'Enter the certificate path',
       validate (path) {
@@ -188,7 +188,7 @@ class Log {
       initial: "./server.crt"
     },
     {
-      type: prev => !prev && 'text',
+      type: prev => prev !== true && 'text',
       name: 'key',
       message: 'Enter the private key path',
       validate (path) {
@@ -258,7 +258,7 @@ class Log {
     shouldPrompt = !(await prompt({
       type: 'toggle',
       name: 'load',
-      message: 'Load previous configuration?',
+      message: 'Use previous configuration?',
       initial: true,
       active: 'Yes',
       inactive: 'No'
@@ -266,6 +266,11 @@ class Log {
   }
 
   if(shouldPrompt) {
+    questions.forEach(q => 
+      q.name in requirements
+      ? q.initial = requirements[q.name]
+      : void 0
+    );
     requirements = await prompt(questions);
     if(Object.keys(requirements).length > 5)
       cache.set("requirements", requirements);

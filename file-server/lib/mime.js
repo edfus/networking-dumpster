@@ -16,6 +16,8 @@ export default {
   ".eot": "application/vnd.ms-fontobject",
   ".epub": "application/epub+zip",
   ".exe": "application/vnd.microsoft.portable-executable",
+  ".flv": "video/x-flv",
+  ".mkv": "video/x-matroska",
   ".gif": "image/gif",
   ".htm": "text/html",
   ".html": "text/html",
