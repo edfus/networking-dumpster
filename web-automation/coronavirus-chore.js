@@ -1,8 +1,6 @@
 import { Writable, pipeline } from "stream";
-import { inspect } from "util";
 import { createReadStream, createWriteStream, existsSync, mkdirSync } from "fs";
-import { HTTP, __dirname, serializeFormData, getJSONParser } from "./helpers.js";
-import { strictEqual } from "assert";
+import { HTTP, __dirname, helper, JSONParser } from "./helpers.js";
 import { basename, extname, join } from "path";
 import { JSDOM } from "jsdom";
 import { IncomingMessage } from "http";
@@ -21,7 +19,7 @@ if (!existsSync(dumpPath))
 const useProxy = /--proxy/.test(process.argv[2]) || false;
 const http = new HTTP("http://localhost:8888", useProxy);
 
-series(
+helper.series(
   getLoginHTML,
   jsdomLogin,
   // ↑ service --JSession--> sso --JSession+ticket--> service --set-cookie-->
@@ -35,7 +33,7 @@ series(
   }
 );
 
-// series(
+// helper.series(
 //   getLoginHTML,
 //   jsdomLogin,
 //   resendUnchecked,
@@ -52,12 +50,12 @@ async function getLoginHTML() {
     path: metadata.loginPath
   })
     .then(res =>
-      followRedirect(res)
+      http.followRedirect(res, metadata.hostname)
         .then(async res => {
-          mustStrictEqual(
+          helper.mustStrictEqual(
             res.statusCode,
             200, 
-            () => `getLoginHTML failed. ${logResInfo(res)}`
+            () => new Error(`getLoginHTML failed. ${helper.logResInfo(res)}`)
           );
 
           return new Promise((resolve, reject) => {
@@ -95,18 +93,18 @@ async function jsdomLogin(filepath) {
       uri,
       {
         method: form.method,
-        body: serializeFormData(new FormData(form), type),
+        body: helper.serializeFormData(new FormData(form), type),
         headers: {
           "Content-type": type
         }
       }
     ).then(res => {
-      mustStrictEqual(
+      helper.mustStrictEqual(
         res.statusCode,
         302, 
-        () => `jsdomLogin failed. ${logResInfo(res)}`
+        () => new Error(`jsdomLogin failed. ${helper.logResInfo(res)}`)
       );
-      return followRedirect(res);
+      return http.followRedirect(res, metadata.hostname);
     }).then(res => void res.resume());
   });
 }
@@ -133,17 +131,17 @@ async function getFormModuleId() {
       method: "POST"
     });
 
-    mustStrictEqual(
+    helper.mustStrictEqual(
       source.statusCode,
       200, 
-      () => `getFormModuleId failed. ${logResInfo(source)}`
+      () => new Error(`getFormModuleId failed. ${helper.logResInfo(source)}`)
     );
   }
 
   return new Promise((resolve, reject) => {
     pipeline(
       source,
-      getJSONParser(),
+      new JSONParser(),
       new Writable({
         objectMode: true,
         write(result, _, cb) {
@@ -164,7 +162,7 @@ async function getFormModuleId() {
       err => {
         if (err) {
           if (source instanceof IncomingMessage)
-            err.stack += logResInfo(source);
+            err.stack += helper.logResInfo(source);
           return reject(err);
         }
 
@@ -186,10 +184,10 @@ async function createForm(id) {
     })
       .then(res => 
         new Promise((resolve, reject) => {
-          mustStrictEqual(
+          helper.mustStrictEqual(
             res.statusCode,
             200, 
-            () => `createForm failed. ${logResInfo(res)}`
+            () => new Error(`createForm failed. ${helper.logResInfo(res)}`)
           );
           const filepath = join(dumpPath,"./form-backup.html");
           
@@ -225,16 +223,16 @@ async function sendData (id) {
       }
     }
   ).then(res => {
-    mustStrictEqual(
+    helper.mustStrictEqual(
       res.statusCode,
       200,
-      () => `sendData failed. ${logResInfo(res)}`
+      () => new Error(`sendData failed. ${helper.logResInfo(res)}`)
     )
 
     return new Promise((resolve, reject) => {
       pipeline(
         res,
-        getJSONParser(),
+        new JSONParser(),
         new Writable({
           objectMode: true,
           write(result, _, cb) {
@@ -245,7 +243,7 @@ async function sendData (id) {
         }),
         err => {
           if (err) {
-            err.stack += logResInfo(res);
+            err.stack += helper.logResInfo(res);
             return reject(err);
           }
   
@@ -267,16 +265,16 @@ async function resendUnchecked() {
       }
     }
   ).then(res => {
-    mustStrictEqual(
+    helper.mustStrictEqual(
       res.statusCode,
       200,
-      () => `getSubmittedForms failed. ${logResInfo(res)}`
+      () => new Error(`getSubmittedForms failed. ${helper.logResInfo(res)}`)
     );
 
     return new Promise((resolve, reject) => {
       pipeline(
         res,
-        getJSONParser(),
+        new JSONParser(),
         new Writable({
           objectMode: true,
           write(result, _, cb) {
@@ -297,7 +295,7 @@ async function resendUnchecked() {
         }),
         err => {
           if (err) {
-            err.stack += logResInfo(res);
+            err.stack += helper.logResInfo(res);
             return reject(err);
           }
   
@@ -306,62 +304,4 @@ async function resendUnchecked() {
       );
     });
   });
-}
-
-async function followRedirect(res) {
-  if (![301, 302, 303, 307, 308].includes(res.statusCode))
-    return res;
-
-  res.resume();
-
-  if (!res.headers.location)
-    throw new Error(logResInfo(res));
-
-  let fetchPromise;
-
-  if (/https?:/.test(res.headers.location)) {
-    fetchPromise = http.fetch(res.headers.location);
-  } else {
-    fetchPromise = http.fetch({
-      hostname: metadata.hostname,
-      path: res.headers.location
-    });
-  }
-
-  return fetchPromise.then(res => followRedirect(res));
-}
-
-
-function series(...argv) {
-  const callback = argv[argv.length - 1];
-
-  let ret;
-  (async () => {
-    for (let i = 0; i < argv.length - 1; i++) {
-      const func = argv[i];
-
-      try {
-        ret = await func(ret);
-      } catch (err) {
-        return callback(err instanceof Error ? err : new Error(err));
-      }
-    }
-    return callback(null);
-  })();
-}
-
-function logResInfo (res) {
-  return (
-    "\n\nThe response headers: ".concat(inspect(res.headers)).concat(
-      `\n\nThe response status: ${res.statusCode} ${res.statusMessage}\n`
-    )
-  );
-}
-
-function mustStrictEqual (actual, expect, emitCallback) {
-  try {
-    strictEqual(actual, expect)
-  } catch (err) {
-    throw emitCallback(err);
-  }
 }
