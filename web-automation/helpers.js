@@ -1,9 +1,12 @@
 import cookieParser from "set-cookie-parser";
 import ProxyTunnel from "forward-proxy-tunnel";
+
 import { request as request_https, Agent as HTTPSAgent } from "https";
 import { request as request_http, Agent as HTTPAgent, ClientRequest, IncomingMessage } from "http";
 import { dirname } from "path";
 import { fileURLToPath } from "url";
+import { inspect } from "util";
+import { strictEqual } from "assert";
 import { pipeline, Readable, Transform } from "stream";
 
 
@@ -186,13 +189,13 @@ class HTTP {
     ;
   }
 
-  async fetch (_input, _options, _cb) {
-    const { uriObject, options, cb } = this.parseRequestParams(_input, _options, _cb);
+  async fetch (_input, _options) {
+    const { uriObject, options } = this.parseRequestParams(_input, _options);
 
     return (
       new Promise((resolve, reject) => {
         const req = (
-          this.request.call(this, uriObject, options, cb)
+          this.request.call(this, uriObject, options)
             .once("response", resolve)
             .once("error", err => {
               if (req.reusedSocket && err.code === 'ECONNRESET') {
@@ -216,6 +219,29 @@ class HTTP {
       })
     );
   }
+
+  async followRedirect(res, hostname) {
+    if (![301, 302, 303, 307, 308].includes(res.statusCode))
+      return res;
+  
+    res.resume();
+  
+    if (!res.headers.location)
+      throw new Error(logResInfo(res));
+  
+    let fetchPromise;
+  
+    if (/https?:/.test(res.headers.location)) {
+      fetchPromise = this.fetch(res.headers.location);
+    } else {
+      fetchPromise = this.fetch({
+        hostname: hostname,
+        path: res.headers.location
+      });
+    }
+  
+    return fetchPromise.then(res => this.followRedirect(res, hostname));
+  }
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -234,34 +260,112 @@ function serializeFormData (formData, type) {
   }
 }
 
-function getJSONParser() {
-  return new Transform({
-    readableObjectMode: true,
-    transform(chunk, enc, cb) {
-      this[Symbol.for("kTmpSource")]
-        ? this[Symbol.for("kTmpSource")].push(chunk)
-        : this[Symbol.for("kTmpSource")] = [chunk]
-        ;
-      cb();
-    },
-    flush(cb) {
-      if (!this[Symbol.for("kTmpSource")])
-        return cb(new Error("Empty response"));
+class JSONParser extends Transform {
+  constructor (maxLength = Infinity) {
+    super({ readableObjectMode: true });
+    this[Symbol.for("kLength")] = 0;
+    this[Symbol.for("kMaxLength")] = maxLength;
+    this[Symbol.for("kTmpSource")] = [];
+  }
 
-      const data = new TextDecoder("utf8").decode(
-        Buffer.concat(this[Symbol.for("kTmpSource")])
-      );
+  _transform (chunk, enc, cb) {
+    this[Symbol.for("kTmpSource")].push(chunk);
+    if(this[Symbol.for("kLength")] += chunk.length > this[Symbol.for("kMaxLength")])
+      return cb(new RangeError(`JSONParser: maxLength ${maxLength} reached.`));
+    return cb();
+  }
+
+  _flush (cb) {
+    if (!this[Symbol.for("kTmpSource")])
+      return cb(new Error("Empty response"));
+
+    const data = new TextDecoder("utf8").decode(
+      Buffer.concat(this[Symbol.for("kTmpSource")])
+    );
+
+    try {
+      return cb(null, JSON.parse(data));
+    } catch (err) {
+      return cb(err);
+    }
+  }
+}
+
+const escapeRegEx = new RegExp(
+  "(" + "[]\^$.|?*+(){}".split("").map(c => "\\".concat(c)).join("|") + ")",
+  "g"
+);
+
+function escapeRegExpSource (str) {
+  return str.replace(escapeRegEx, "\\$1")
+}
+
+class JSONP_Parser extends JSONParser {
+  constructor (callback, maxLength = 30000) {
+    super(maxLength);
+    this.callback = escapeRegExpSource(callback);
+  }
+
+  _flush (cb) {
+    if (!this[Symbol.for("kTmpSource")])
+      return cb(new Error("Empty response"));
+
+    const data = new TextDecoder("utf8").decode(
+      Buffer.concat(this[Symbol.for("kTmpSource")])
+    )   
+      .replace(
+        new RegExp(`^${this.callback}\\s?\\(`),
+        ""
+      )
+      .replace(/\)[\s;]*$/, "")
+
+    try {
+      return cb(null, JSON.parse(data));
+    } catch (err) {
+      return cb(err);
+    }
+  }
+}
+
+function series(...argv) {
+  const callback = argv[argv.length - 1];
+
+  let ret;
+  (async () => {
+    for (let i = 0; i < argv.length - 1; i++) {
+      const func = argv[i];
 
       try {
-        cb(null, JSON.parse(data));
+        ret = await func(ret);
       } catch (err) {
-        cb(err);
+        return callback(err instanceof Error ? err : new Error(err));
       }
     }
-  });
+    return callback(null);
+  })();
+}
+
+function logResInfo (res) {
+  return (
+    "\n\nThe response headers: ".concat(inspect(res.headers)).concat(
+      `\n\nThe response status: ${res.statusCode} ${res.statusMessage}\n`
+    )
+  );
+}
+
+function mustStrictEqual (actual, expect, emitCallback) {
+  try {
+    strictEqual(actual, expect)
+  } catch (err) {
+    throw typeof emitCallback === "function" ? emitCallback(err) : err;
+  }
+}
+
+export const helper = {
+  serializeFormData, series,
+  mustStrictEqual, logResInfo, escapeRegExpSource
 }
 
 export { 
-  Cookie, HTTP, __dirname, serializeFormData,
-  getJSONParser
+  Cookie, HTTP, __dirname, JSONParser, JSONP_Parser,
 };
