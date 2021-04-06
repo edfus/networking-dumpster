@@ -43,9 +43,15 @@ declare function serializeFormData (
 
 declare function escapeRegExpSource (source: string): string
 
+declare function md5string (str: string): string;
+declare function sha1string (str: string): string;
+declare function hmac_md5 (str: string, key: string): string;
+
 export const helper = {
   mustStrictEqual,
   logResInfo, series,
   serializeFormData,
-  escapeRegExpSource
+  escapeRegExpSource,
+  md5string, hmac_md5,
+  sha1string
 }

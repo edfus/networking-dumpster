@@ -8,6 +8,7 @@ import { fileURLToPath } from "url";
 import { inspect } from "util";
 import { strictEqual } from "assert";
 import { pipeline, Readable, Transform } from "stream";
+import { createHash, createHmac } from "crypto";
 
 
 class Cookie {
@@ -247,10 +248,11 @@ class HTTP {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function serializeFormData (formData, type) {
+  const iterator = formData.entries ? formData.entries() : Object.entries(formData);
   if(type !== "multipart/form-data") {
     // x-www-form-url-encoded
-    const result = []
-    for (const [key, value] of formData.entries()) {
+    const result = [];
+    for (const [key, value] of iterator) {
       result.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
     }
     return result.join("&");
@@ -361,8 +363,20 @@ function mustStrictEqual (actual, expect, emitCallback) {
   }
 }
 
+function hmac_md5(string, key) {
+  return createHmac("md5", key).update(string).digest("hex");
+}
+
+function md5string(string) {
+  return createHash("md5").update(string).digest("hex")
+}
+
+function sha1string(string) {
+  return createHash("sha1").update(string).digest("hex")
+}
+
 export const helper = {
-  serializeFormData, series,
+  serializeFormData, series, md5string, sha1string, hmac_md5,
   mustStrictEqual, logResInfo, escapeRegExpSource
 }
 
