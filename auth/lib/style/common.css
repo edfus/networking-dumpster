@@ -1,0 +1,68 @@
+:root {
+  --dark-mode-toggle-light-icon: url("../dark-mode-toggle/sun.png");
+  --dark-mode-toggle-dark-icon: url("../dark-mode-toggle/moon.png");
+  --dark-mode-toggle-remember-icon-unchecked: url("../dark-mode-toggle/unchecked.svg");
+  --dark-mode-toggle-remember-icon-checked: url("../dark-mode-toggle/checked.svg");
+  --background-color: rgb(240, 240, 240);
+  --text-color: rgb(15, 15, 15);
+  --inverted-text-color: white;
+  --readonly-bg-color: #026DC5;
+}
+
+html {
+  font-size: 30px;
+  color: var(--text-color);
+  background-color: var(--background-color);
+  font-family: sans-serif;
+}
+
+textarea[is="copyable-textarea"] {
+  cursor: copy;
+  padding: .3rem;
+  background: var(--readonly-bg-color);
+  color: var(--inverted-text-color);
+}
+
+aside#dark-mode-toggle-wrapper {
+  position: absolute;
+  right: 5%;
+  top: 8%;
+}
+
+section {
+  display: flex;
+  flex-direction: row;
+  column-gap: 2rem;
+  justify-content: center;
+}
+
+input,
+button,
+textarea,
+small {
+  font-size: .83rem;
+}
+
+input {
+  padding: 0.0625rem .125rem
+}
+
+button,
+input[type=reset] {
+  padding: 0.0625rem .375rem
+}
+
+#multithreads-attention {
+  display: block;
+  padding-left: 1rem;
+  font-size: 0.8rem;
+}
+
+input[type=range],
+input[type=checkbox] {
+  transform: scale(1.6);
+}
+
+input[type=range] {
+  margin: 0 1.4rem;
+}
