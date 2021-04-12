@@ -12,38 +12,38 @@ import { createHash, createHmac } from "crypto";
 
 
 class Cookie {
-  constructor () {
+  constructor() {
     const regexMap = new Map();
     const cache = new Map();  //NOTE possible memory leak
     this.storage = new class CookieMap extends Map {
-      get (domainWithPath, isInSecureContext) {
+      get(domainWithPath, isInSecureContext) {
         let cachedPattern = cache.get(domainWithPath);
-        if(cachedPattern)
+        if (cachedPattern)
           return this.serialize(super.get(cachedPattern.source), isInSecureContext);
 
         for (const matchSource of super.keys()) {
           let matchPattern = regexMap.get(matchSource);
-          if(!matchPattern) {
+          if (!matchPattern) {
             matchPattern = new RegExp(matchSource, "i");
             regexMap.set(matchSource, matchPattern);
           }
 
-          if(matchPattern.test(domainWithPath)) {
+          if (matchPattern.test(domainWithPath)) {
             return this.serialize(super.get(matchSource), isInSecureContext);
           }
         }
         return "";
       }
 
-      serialize (cookiesArray, inSecureContext) {
-        if(!Array.isArray(cookiesArray))
+      serialize(cookiesArray, inSecureContext) {
+        if (!Array.isArray(cookiesArray))
           return "";
 
         return cookiesArray.reduce(
           (result, currentValue, i) => {
-            if(currentValue.secure && !inSecureContext)
+            if (currentValue.secure && !inSecureContext)
               return result;
-            if(!isNaN(currentValue.expires) && currentValue.expires <= Date.now()) {
+            if (!isNaN(currentValue.expires) && currentValue.expires <= Date.now()) {
               cookiesArray.splice(i, 1);
               return result;
             }
@@ -54,32 +54,32 @@ class Cookie {
         ).join("; ");
       }
 
-      domain2regexSrc (domainWithPath) {
-        if(domainWithPath.endsWith("/"))
+      domain2regexSrc(domainWithPath) {
+        if (domainWithPath.endsWith("/"))
           domainWithPath = domainWithPath.substring(0, domainWithPath.length - 1);
-        
+
         domainWithPath = domainWithPath
-                          .trim()
-                          .toLowerCase()
-                          .replace(/(\.)/g, "\\$1")
-                          .replace(/\[|\]/g, "")
-        ;
+          .trim()
+          .toLowerCase()
+          .replace(/(\.)/g, "\\$1")
+          .replace(/\[|\]/g, "")
+          ;
         return `^([a-z0-9.-]+\.)?${domainWithPath}`;
       }
 
-      add (domainWithPath, value) {
+      add(domainWithPath, value) {
         const matchSource = this.domain2regexSrc(domainWithPath);
 
         const cookiesArray = super.get(matchSource);
-        if(Array.isArray(cookiesArray))
+        if (Array.isArray(cookiesArray))
           cookiesArray.push(value);
         else super.set(matchSource, [value]);
       }
-    }
+    };
   }
 
-  applyTo (request) {
-    if(request instanceof ClientRequest) {
+  applyTo(request) {
+    if (request instanceof ClientRequest) {
       const cookie = this.storage.get(
         request.host.concat(request.path),
         request.protocol === "https:"
@@ -90,8 +90,8 @@ class Cookie {
     return void 0;
   }
 
-  add (request, response) {
-    if(response instanceof IncomingMessage) { // response
+  add(request, response) {
+    if (response instanceof IncomingMessage) { // response
       const cookies = cookieParser.parse(
         response,
         {
@@ -101,8 +101,8 @@ class Cookie {
 
       const hostname = request.host || request;
       cookies.forEach(cookie => {
-        if(cookie.domain)
-          cookie.domain = cookie.domain.replace(/^\./, "")
+        if (cookie.domain)
+          cookie.domain = cookie.domain.replace(/^\./, "");
         this.storage.add(
           (cookie.domain || hostname).concat(cookie.path || "/"),
           {
@@ -111,18 +111,18 @@ class Cookie {
             secure: cookie.secure || false
             // sameSite: ""
           }
-        )
+        );
       });
       return true;
     }
-  
+
     return false;
   }
 }
 
 class HTTP {
-  constructor (proxy, useProxy) {
-    if(proxy && useProxy) {
+  constructor(proxy, useProxy) {
+    if (proxy && useProxy) {
       this.proxy = new ProxyTunnel(proxy);
       this._request = this.proxy.request.bind(this.proxy);
       process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = 0;
@@ -141,20 +141,20 @@ class HTTP {
 
     this.httpsAgent = new HTTPSAgent({
       keepAlive: true
-    })
+    });
   }
 
-  _request (uriObject, options, cb) {
+  _request(uriObject, options, cb) {
     options.headers = {
       ...this.defaultHeader,
       ...options.headers
-    }
+    };
     options.agent = (
-      "agent" in options 
-          ? options.agent 
-          : uriObject.protocol === "https:" 
-              ? this.httpsAgent 
-              : this.httpAgent
+      "agent" in options
+        ? options.agent
+        : uriObject.protocol === "https:"
+          ? this.httpsAgent
+          : this.httpAgent
     );
     return (
       uriObject.protocol === "https:"
@@ -163,10 +163,12 @@ class HTTP {
     );
   }
 
-  parseRequestParams (input, options, cb) {
-    if(typeof input === "string") {
-      if(/\.\/|\//.test(input)) // path - / | ./
-        input = new URL(input, `${this.lastContext.protocol}//${this.lastContext.host}`)
+  parseRequestParams(input, options, cb) {
+    if (typeof input === "string") {
+      if(input.startsWith("/")) // from root
+        input = new URL(input, this.lastContext.origin);
+      if (/\.+\//.test(input)) // relative ../ | ./
+        input = new URL(input, `${this.lastContext.protocol}//${this.lastContext.host}${this.lastContext.pathname}`);
     }
 
     const params = ProxyTunnel.prototype.parseRequestParams(input, options, cb);
@@ -176,7 +178,7 @@ class HTTP {
     return params;
   }
 
-  request (_input, _options, _cb) {
+  request(_input, _options, _cb) {
     const { uriObject, options, cb } = this.parseRequestParams(_input, _options, _cb);
 
     const cookie = this.cookie.storage.get(
@@ -190,7 +192,7 @@ class HTTP {
     ;
   }
 
-  async fetch (_input, _options) {
+  async fetch(_input, _options) {
     const { uriObject, options } = this.parseRequestParams(_input, _options);
 
     return (
@@ -208,12 +210,12 @@ class HTTP {
             })
         );
         const body = options.body || options.data;
-        if(body instanceof Readable) {
+        if (body instanceof Readable) {
           pipeline(
             body,
             req,
-            err => err && reject(err) 
-          )
+            err => err && reject(err)
+          );
         } else {
           req.end(body);
         }
@@ -224,14 +226,14 @@ class HTTP {
   async followRedirect(res, hostname) {
     if (![301, 302, 303, 307, 308].includes(res.statusCode))
       return res;
-  
+
     res.resume();
-  
+
     if (!res.headers.location)
       throw new Error(logResInfo(res));
-  
+
     let fetchPromise;
-  
+
     if (/https?:/.test(res.headers.location)) {
       fetchPromise = this.fetch(res.headers.location);
     } else {
@@ -240,20 +242,20 @@ class HTTP {
         path: res.headers.location
       });
     }
-  
+
     return fetchPromise.then(res => this.followRedirect(res, hostname));
   }
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-function serializeFormData (formData, type) {
+function serializeFormData(formData, type) {
   const iterator = formData.entries ? formData.entries() : Object.entries(formData);
-  if(type !== "multipart/form-data") {
+  if (type !== "multipart/form-data") {
     // x-www-form-url-encoded
     const result = [];
     for (const [key, value] of iterator) {
-      result.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+      result.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
     }
     return result.join("&");
   } else {
@@ -263,21 +265,21 @@ function serializeFormData (formData, type) {
 }
 
 class JSONParser extends Transform {
-  constructor (maxLength = Infinity) {
+  constructor(maxLength = Infinity) {
     super({ readableObjectMode: true });
     this[Symbol.for("kLength")] = 0;
     this[Symbol.for("kMaxLength")] = maxLength;
     this[Symbol.for("kTmpSource")] = [];
   }
 
-  _transform (chunk, enc, cb) {
+  _transform(chunk, enc, cb) {
     this[Symbol.for("kTmpSource")].push(chunk);
-    if(this[Symbol.for("kLength")] += chunk.length > this[Symbol.for("kMaxLength")])
+    if (this[Symbol.for("kLength")] += chunk.length > this[Symbol.for("kMaxLength")])
       return cb(new RangeError(`JSONParser: maxLength ${maxLength} reached.`));
     return cb();
   }
 
-  _flush (cb) {
+  _flush(cb) {
     if (!this[Symbol.for("kTmpSource")])
       return cb(new Error("Empty response"));
 
@@ -298,28 +300,28 @@ const escapeRegEx = new RegExp(
   "g"
 );
 
-function escapeRegExpSource (str) {
-  return str.replace(escapeRegEx, "\\$1")
+function escapeRegExpSource(str) {
+  return str.replace(escapeRegEx, "\\$1");
 }
 
 class JSONP_Parser extends JSONParser {
-  constructor (callback, maxLength = 30000) {
+  constructor(callback, maxLength = 30000) {
     super(maxLength);
     this.callback = escapeRegExpSource(callback);
   }
 
-  _flush (cb) {
+  _flush(cb) {
     if (!this[Symbol.for("kTmpSource")])
       return cb(new Error("Empty response"));
 
     const data = new TextDecoder("utf8").decode(
       Buffer.concat(this[Symbol.for("kTmpSource")])
-    )   
+    )
       .replace(
         new RegExp(`^${this.callback}\\s?\\(`),
         ""
       )
-      .replace(/\)[\s;]*$/, "")
+      .replace(/\)[\s;]*$/, "");
 
     try {
       return cb(null, JSON.parse(data));
@@ -347,7 +349,7 @@ function series(...argv) {
   })();
 }
 
-function logResInfo (res) {
+function logResInfo(res) {
   return (
     "\n\nThe response headers: ".concat(inspect(res.headers)).concat(
       `\n\nThe response status: ${res.statusCode} ${res.statusMessage}\n`
@@ -355,9 +357,9 @@ function logResInfo (res) {
   );
 }
 
-function mustStrictEqual (actual, expect, emitCallback) {
+function mustStrictEqual(actual, expect, emitCallback) {
   try {
-    strictEqual(actual, expect)
+    strictEqual(actual, expect);
   } catch (err) {
     throw typeof emitCallback === "function" ? emitCallback(err) : err;
   }
@@ -368,18 +370,18 @@ function hmac_md5(string, key) {
 }
 
 function md5string(string) {
-  return createHash("md5").update(string).digest("hex")
+  return createHash("md5").update(string).digest("hex");
 }
 
 function sha1string(string) {
-  return createHash("sha1").update(string).digest("hex")
+  return createHash("sha1").update(string).digest("hex");
 }
 
 export const helper = {
   serializeFormData, series, md5string, sha1string, hmac_md5,
   mustStrictEqual, logResInfo, escapeRegExpSource
-}
+};
 
-export { 
+export {
   Cookie, HTTP, __dirname, JSONParser, JSONP_Parser,
 };

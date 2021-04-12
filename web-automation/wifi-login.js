@@ -236,7 +236,6 @@ async function login(credentials) {
 }
 
 function xEncode(str, key) {
-
   if (str == "") {
     return "";
   }
