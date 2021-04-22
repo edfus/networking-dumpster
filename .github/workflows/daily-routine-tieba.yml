@@ -1,0 +1,54 @@
+name: Daily Routine Tieba
+
+on:
+  schedule:
+    - cron: 0 2 * * *
+  workflow_dispatch:
+jobs:
+  run:
+    environment: daily-routine-tieba
+    runs-on: ubuntu-18.04
+    steps:
+      # setup
+      - uses: actions/checkout@v2
+      # Hacks to get setup-python to work on act
+      # - run: |
+      #     if [ ! -f "/etc/lsb-release" ] ; then
+      #       echo "DISTRIB_RELEASE=18.04" > /etc/lsb-release
+      #     fi
+      - name: Set up Python
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.9
+          # AGENT_TOOLSDIRECTORY: /opt/hostedtoolcache
+      # py
+      - name: Cache Python modules
+        uses: actions/cache@v2
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-
+      - name: Cache External Python Scripts
+        id: cache-external-py
+        uses: actions/cache@v2
+        with:
+          path: ./py
+          key: ${{ runner.os }}-external-py
+      - name: Get External Python Scripts
+        if: steps.cache-external-py.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get install libzbar0
+          wget -P ./py https://raw.githubusercontent.com/Aruelius/tieba_sign/master/tieba_sign.py
+          wget -P ./py https://raw.githubusercontent.com/Aruelius/tieba_sign/master/requirements.txt
+      - name: Run tiebe sign
+        env:
+          TIEBA_COOKIES: ${{ secrets.TIEBA_COOKIES }}
+          TIEBA_USERNAME: ${{ secrets.TIEBA_USERNAME }}
+        run: |
+          cd py
+          cat>".${TIEBA_USERNAME}"<<EOF
+          ${TIEBA_COOKIES}
+          EOF
+          sed 's/user_lists\s*=\s*\[.*\]/user_lists = ["'${TIEBA_USERNAME}'"]/' tieba_sign.py >tieba_sign_run.py
+          pip3 install -r requirements.txt
+          python3 tieba_sign_run.py 1>/dev/null

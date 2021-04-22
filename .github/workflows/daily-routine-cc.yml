@@ -1,0 +1,36 @@
+name: Daily Routine CC
+
+on:
+  schedule:
+    - cron: 0 2 * * *
+  workflow_dispatch:
+jobs:
+  run:
+    environment: daily-routine-cc
+    runs-on: ubuntu-latest
+    steps:
+      # setup
+      - uses: actions/checkout@v2
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: 15
+      # node
+      - name: Cache node modules
+        uses: actions/cache@v2
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-npm-
+      - name: Run coronavirus chore
+        env:
+          CC_METADATA: ${{ secrets.CC_METADATA }}
+        run: |
+          cd web-automation
+          mkdir -p .secrets
+          cat>.secrets/cc-metadata.js<<EOF
+          ${CC_METADATA}
+          EOF
+          tail .secrets/cc-metadata.js
+          npm install
+          node coronavirus-chore.js --sanitize 1>/dev/null

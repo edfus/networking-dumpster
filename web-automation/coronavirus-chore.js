@@ -16,8 +16,17 @@ const dumpPath = join(
 if (!existsSync(dumpPath))
   mkdirSync(dumpPath);
 
-const useProxy = /--proxy/.test(process.argv[2]) || false;
+const argvs = process.argv.slice(2);
+const useProxy = extractArg(/--proxy/) !== false;
 const http = new HTTP("http://localhost:8888", useProxy);
+
+const sanitize = extractArg(/--sanitize/) !== false;
+
+if(sanitize)
+  helper.logResInfo = res => res.statusCode;
+
+if(argvs.length)
+  console.warn("Unrecognized arguments:", argvs);
 
 helper.series(
   getLoginHTML,
@@ -146,7 +155,7 @@ async function getFormModuleId() {
         objectMode: true,
         write(result, _, cb) {
           if (!result.isSuccess)
-            return cb(new Error(result.msg));
+            return cb(new Error(sanitize ? "getFormModuleId received falsy isSuccess" : result.msg));
 
           id = result.module; //
 
@@ -237,7 +246,7 @@ async function sendData (id) {
           objectMode: true,
           write(result, _, cb) {
             if (!result.isSuccess)
-              return cb(new Error(result.msg));
+              return cb(new Error(sanitize ? "sendData received falsy isSuccess" : result.msg));
             return cb();
           }
         }),
@@ -279,7 +288,7 @@ async function resendUnchecked() {
           objectMode: true,
           write(result, _, cb) {
             if (!result.isSuccess)
-              return cb(new Error(result.msg));
+              return cb(new Error(sanitize ? "getSubmittedForms received falsy isSuccess" : result.msg));
             const list = result.module.data;
 
             Promise.all(
@@ -304,4 +313,14 @@ async function resendUnchecked() {
       );
     });
   });
+}
+
+function extractArg(matchPattern, offset = 0) {
+  for (let i = 0; i < argvs.length; i++) {
+    if (matchPattern.test(argvs[i])) {
+      const matched = argvs.splice(i, offset + 1);
+      return matched.length <= 2 ? matched[offset] : matched.slice(1);
+    }
+  }
+  return false;
 }
