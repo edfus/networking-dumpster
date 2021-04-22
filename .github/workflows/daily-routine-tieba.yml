@@ -39,7 +39,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: ~/libzbar0
-          key: ${{ runner.os }}-libzbar0
+          key: ${{ runner.os }}-libzbar0-v1
       - name: Install libzbar0
         env:
           CACHE_HIT: ${{ steps.cache-libzbar0.outputs.cache-hit }}
@@ -50,7 +50,9 @@ jobs:
             else
               sudo apt-get install --yes libzbar0
               mkdir -p ~/libzbar0
-              sudo dpkg -L libzbar0 | while IFS= read -r f; do if test -f $f; then echo $f; fi; done | xargs cp --parents --target-directory ~/libzbar0/
+              for dep in libv4l-0 libv4lconvert0 libzbar0; do
+                  sudo dpkg -L $dep | while IFS= read -r f; do if test -f $f; then echo $f; fi; done | xargs cp --parents --target-directory ~/libzbar0/
+              done
             fi
       - name: Get External Python Dependencies
         if: steps.cache-external-py.outputs.cache-hit != 'true'
