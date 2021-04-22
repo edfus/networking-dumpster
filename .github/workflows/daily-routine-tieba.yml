@@ -65,23 +65,32 @@ jobs:
       #             sudo dpkg -L $dep | while IFS= read -r f; do if test -f $f; then echo $f; fi; done | xargs cp --parents --target-directory ~/libzbar0/
       #         done
       #       fi
-      - name: Get External Python Dependencies
+      - name: Setup Python Scripts
         if: steps.cache-external-py.outputs.cache-hit != 'true'
+        env:
+          TIEBA_USERNAME: ${{ secrets.TIEBA_USERNAME }}
+        run: |
+          cd ./py
+          wget https://raw.githubusercontent.com/Aruelius/tieba_sign/master/tieba_sign.py
+          wget https://raw.githubusercontent.com/Aruelius/tieba_sign/master/requirements.txt
+          sed 's/user_lists\s*=\s*\[.*\]/user_lists = ["'${TIEBA_USERNAME}'"]/' tieba_sign.py >tieba_sign_run.py
+      - name: Add credentials
         env:
           TIEBA_COOKIES: ${{ secrets.TIEBA_COOKIES }}
           TIEBA_USERNAME: ${{ secrets.TIEBA_USERNAME }}
         run: |
-          wget -P ./py https://raw.githubusercontent.com/Aruelius/tieba_sign/master/tieba_sign.py
-          wget -P ./py https://raw.githubusercontent.com/Aruelius/tieba_sign/master/requirements.txt
-          cd ./py
-          cat>".${TIEBA_USERNAME}"<<EOF
+          cat>"./py/.${TIEBA_USERNAME}"<<EOF
           ${TIEBA_COOKIES}
           EOF
-          sed 's/user_lists\s*=\s*\[.*\]/user_lists = ["'${TIEBA_USERNAME}'"]/' tieba_sign.py >tieba_sign_run.py
       - name: Run tiebe sign
         # env:
         #   LD_LIBRARY_PATH: /usr/lib/x86_64-linux-gnu/libzbar.so.0
         run: |
-          cd py
+          cd ./py
           pip3 install -r requirements.txt 1>/dev/null
           python3 tieba_sign_run.py 1>/dev/null
+      - name: Remove credentials
+        env:
+          TIEBA_USERNAME: ${{ secrets.TIEBA_USERNAME }}
+        run: |
+          rm -f "./py/.${TIEBA_USERNAME}"
