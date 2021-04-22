@@ -40,20 +40,30 @@ jobs:
         with:
           path: ~/libzbar0
           key: ${{ runner.os }}-libzbar0-v1
-      - name: Install libzbar0
+      - name: Download libzbar0 package
         env:
           CACHE_HIT: ${{ steps.cache-libzbar0.outputs.cache-hit }}
-        # https://www.javaer101.com/en/article/37631919.html
+          PKG: libzbar0
+        # https://askubuntu.com/questions/30482/is-there-an-apt-command-to-download-a-deb-file-from-the-repositories-to-the-curr
         run: |
-            if [[ "$CACHE_HIT" == 'true' ]]; then
-              sudo cp --verbose --force --recursive ~/libzbar0/* /
-            else
-              sudo apt-get install --yes libzbar0
-              mkdir -p ~/libzbar0
-              for dep in libv4l-0 libv4lconvert0 libzbar0; do
-                  sudo dpkg -L $dep | while IFS= read -r f; do if test -f $f; then echo $f; fi; done | xargs cp --parents --target-directory ~/libzbar0/
-              done
-            fi
+          wget -P ~/libzbar0 $(apt-get install --reinstall --print-uris -y $PKG | cut -d"'" -f2 | grep "/${PKG}_")
+      - name: Install libzbar0
+        run: |
+          sudo apt install $(ls -d ~/libzbar0/*.deb)
+      # - name: Install libzbar0
+      #   env:
+      #     CACHE_HIT: ${{ steps.cache-libzbar0.outputs.cache-hit }}
+      #   # https://www.javaer101.com/en/article/37631919.html
+      #   run: |
+      #       if [[ "$CACHE_HIT" == 'true' ]]; then
+      #         sudo cp --verbose --force --recursive ~/libzbar0/* /
+      #       else
+      #         sudo apt-get install --yes libzbar0
+      #         mkdir -p ~/libzbar0
+      #         for dep in libv4l-0 libv4lconvert0 libzbar0; do
+      #             sudo dpkg -L $dep | while IFS= read -r f; do if test -f $f; then echo $f; fi; done | xargs cp --parents --target-directory ~/libzbar0/
+      #         done
+      #       fi
       - name: Get External Python Dependencies
         if: steps.cache-external-py.outputs.cache-hit != 'true'
         env:
@@ -68,8 +78,8 @@ jobs:
           EOF
           sed 's/user_lists\s*=\s*\[.*\]/user_lists = ["'${TIEBA_USERNAME}'"]/' tieba_sign.py >tieba_sign_run.py
       - name: Run tiebe sign
-        env:
-          LD_LIBRARY_PATH: /usr/lib/x86_64-linux-gnu/libzbar.so.0
+        # env:
+        #   LD_LIBRARY_PATH: /usr/lib/x86_64-linux-gnu/libzbar.so.0
         run: |
           cd py
           pip3 install -r requirements.txt 1>/dev/null
