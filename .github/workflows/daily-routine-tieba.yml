@@ -28,27 +28,45 @@ jobs:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
           restore-keys: ${{ runner.os }}-pip-
-      - name: Cache External Python Scripts
+      - name: Cache External Python Dependencies
         id: cache-external-py
         uses: actions/cache@v2
         with:
           path: ./py
           key: ${{ runner.os }}-external-py
-      - name: Get External Python Scripts
-        if: steps.cache-external-py.outputs.cache-hit != 'true'
+      - name: Cache libzbar0 
+        id: cache-libzbar0
+        uses: actions/cache@v2
+        with:
+          path: ~/libzbar0
+          key: ${{ runner.os }}-libzbar0
+      - name: Install libzbar0
+        env:
+          CACHE_HIT: ${{ steps.cache-libzbar0.outputs.cache-hit }}
+        # https://www.javaer101.com/en/article/37631919.html
         run: |
-          sudo apt-get install libzbar0
-          wget -P ./py https://raw.githubusercontent.com/Aruelius/tieba_sign/master/tieba_sign.py
-          wget -P ./py https://raw.githubusercontent.com/Aruelius/tieba_sign/master/requirements.txt
-      - name: Run tiebe sign
+            if [[ "$CACHE_HIT" == 'true' ]]; then
+              sudo cp --verbose --force --recursive ~/libzbar0/* /
+            else
+              sudo apt-get install --yes libzbar0
+              mkdir -p ~/libzbar0
+              sudo dpkg -L libzbar0 | while IFS= read -r f; do if test -f $f; then echo $f; fi; done | xargs cp --parents --target-directory ~/libzbar0/
+            fi
+      - name: Get External Python Dependencies
+        if: steps.cache-external-py.outputs.cache-hit != 'true'
         env:
           TIEBA_COOKIES: ${{ secrets.TIEBA_COOKIES }}
           TIEBA_USERNAME: ${{ secrets.TIEBA_USERNAME }}
         run: |
-          cd py
+          wget -P ./py https://raw.githubusercontent.com/Aruelius/tieba_sign/master/tieba_sign.py
+          wget -P ./py https://raw.githubusercontent.com/Aruelius/tieba_sign/master/requirements.txt
+          cd ./py
           cat>".${TIEBA_USERNAME}"<<EOF
           ${TIEBA_COOKIES}
           EOF
           sed 's/user_lists\s*=\s*\[.*\]/user_lists = ["'${TIEBA_USERNAME}'"]/' tieba_sign.py >tieba_sign_run.py
-          pip3 install -r requirements.txt
+      - name: Run tiebe sign
+        run: |
+          cd py
+          pip3 install -r requirements.txt 1>/dev/null
           python3 tieba_sign_run.py 1>/dev/null
