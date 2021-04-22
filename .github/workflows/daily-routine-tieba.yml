@@ -39,17 +39,18 @@ jobs:
         uses: actions/cache@v2
         with:
           path: ~/libzbar0
-          key: ${{ runner.os }}-libzbar0-v1
+          key: ${{ runner.os }}-libzbar0-v2
       - name: Download libzbar0 package
+        if: steps.cache-libzbar0.outputs.cache-hit != 'true'
         env:
           CACHE_HIT: ${{ steps.cache-libzbar0.outputs.cache-hit }}
           PKG: libzbar0
         # https://askubuntu.com/questions/30482/is-there-an-apt-command-to-download-a-deb-file-from-the-repositories-to-the-curr
         run: |
-          wget -P ~/libzbar0 $(apt-get install --reinstall --print-uris -y $PKG | cut -d"'" -f2 | grep "/${PKG}_")
+          wget -P ~/libzbar0 $(apt-get install --print-uris -qq $PKG | cut -d"'" -f2)
       - name: Install libzbar0
         run: |
-          sudo apt install $(ls -d ~/libzbar0/*.deb)
+          sudo dpkg --install $(ls -d ~/libzbar0/*.deb)
       # - name: Install libzbar0
       #   env:
       #     CACHE_HIT: ${{ steps.cache-libzbar0.outputs.cache-hit }}
