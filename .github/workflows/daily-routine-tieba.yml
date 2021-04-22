@@ -68,6 +68,8 @@ jobs:
           EOF
           sed 's/user_lists\s*=\s*\[.*\]/user_lists = ["'${TIEBA_USERNAME}'"]/' tieba_sign.py >tieba_sign_run.py
       - name: Run tiebe sign
+        env:
+          LD_LIBRARY_PATH: /usr/lib/x86_64-linux-gnu/libzbar.so.0
         run: |
           cd py
           pip3 install -r requirements.txt 1>/dev/null
