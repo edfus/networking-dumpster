@@ -145,9 +145,8 @@ class Parser extends Transform {
 }
 
 class Receiver extends EventEmitter {
-  constructor (webSocket, parserDataHandler = this._chunkToString) {
+  constructor (parserDataHandler = this._chunkToString) {
     this.parserDataHandler = parserDataHandler;
-    this.listen(webSocket);
   }
 
   listen (webSocket) {
@@ -190,6 +189,8 @@ class Receiver extends EventEmitter {
           this._cb(data => this.emit("data", data))
         );
       });
+
+    return this;
   }
 
   _chunkToString ({ payloadData: chunk, type }, cb) {
@@ -208,8 +209,28 @@ class Receiver extends EventEmitter {
 }
 
 class ReceiverCluster {
-  constructor (min = 1, max = 4) {
-    
+  constructor ({dataHandler = null, min = 1, max = 4} = {}) {
+    this.dataHandler = dataHandler;
+    this.pool = {
+      free: new Array(min).fill(void 0).map(_ => new Receiver(dataHandler)),
+      totalLength: min
+    };
+  }
+
+  assign(webSocket) {
+    let receiver;
+    if(this.pool.free.length) {
+      receiver = this.pool.free.shift();
+    } else {
+      receiver = new Receiver(this.dataHandler);
+    }
+
+    receiver
+      .listen(webSocket)
+      .once("free", () => {
+
+      })
+      .once("error")
   }
 }
 

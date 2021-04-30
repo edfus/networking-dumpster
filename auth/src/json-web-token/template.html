@@ -1,0 +1,26 @@
+<section part="tab-wrap">
+  <nav part="tab-nav" id="jwt-switch">
+    <button type="button" part="tab-button" class="current" for="encoded-jwt">Encoded</button>
+    <button type="button" part="tab-button" for="decoded-jwt">Decoded</button>
+  </nav>
+  <div part="tab-content" id="jwt-tab">
+    <div class="current" part="tab" id="encoded-jwt">
+      <pre id="encoded-jwt-content" contenteditable></pre>
+      <pre id="encoded-jwt-invalid-log"></pre>
+    </div>
+    <div id="decoded-jwt" part="tab">
+      <div>
+        <label for="decoded-jwt-header">HEADER:</label>
+        <textarea id="decoded-jwt-header"></textarea>
+      </div>
+      <div>
+        <label for="decoded-jwt-payload">PAYLOAD:</label>
+        <textarea id="decoded-jwt-payload"></textarea>
+      </div>
+      <div>
+        <label for="decoded-jwt-signature">SIGNATURE:</label>
+        <textarea id="decoded-jwt-signature"></textarea>
+      </div>
+    </div>
+  </div>
+</section>

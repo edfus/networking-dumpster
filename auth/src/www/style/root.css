@@ -16,30 +16,10 @@ html {
   font-family: sans-serif;
 }
 
-textarea[is="copyable-textarea"] {
-  cursor: copy;
-  padding: .3rem;
-  background: var(--readonly-bg-color);
-  color: var(--inverted-text-color);
-}
-
-aside#dark-mode-toggle-wrapper {
-  position: absolute;
-  right: 5%;
-  top: 8%;
-}
-
-section {
-  display: flex;
-  flex-direction: row;
-  column-gap: 2rem;
-  justify-content: center;
-}
-
 input,
 button,
 textarea,
-small {
+label {
   font-size: .83rem;
 }
 
@@ -52,12 +32,6 @@ input[type=reset] {
   padding: 0.0625rem .375rem
 }
 
-#multithreads-attention {
-  display: block;
-  padding-left: 1rem;
-  font-size: 0.8rem;
-}
-
 input[type=range],
 input[type=checkbox] {
   transform: scale(1.6);
@@ -65,4 +39,39 @@ input[type=checkbox] {
 
 input[type=range] {
   margin: 0 1.4rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background-color: rgb(15, 15, 15);
+    --text-color: rgb(240, 240, 240);
+    --shadow-color: rgba(240, 240, 240, 0.5);
+    --accent-color: rgba(0, 0, 240, 0.5);
+  }
+  
+  html {
+    transition: color 1s, background-color 1s;
+  }
+  
+  img {
+    filter: grayscale(50%);
+  }
+  
+  .icon {
+    filter: invert(100%);
+  }
+  
+  a {
+    color: yellow;
+  }
+  
+  select,
+  input,
+  button,
+  textarea,
+  option {
+    color: var(--text-color);
+    background-color: var(--background-color);
+    border-color: var(--text-color);
+  }
 }

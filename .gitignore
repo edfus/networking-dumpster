@@ -4,5 +4,6 @@
 *.dump
 *.cache
 .secrets
+secrets
 node_modules
 package-lock.json

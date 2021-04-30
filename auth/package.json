@@ -9,6 +9,7 @@
   "author": "edfus",
   "license": "ISC",
   "dependencies": {
-    "@edfus/file-server": "^1.2.1"
+    "@edfus/file-server": "^1.2.1",
+    "update-file-content": "^1.7.4"
   }
 }
