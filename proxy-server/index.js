@@ -77,7 +77,8 @@ class App extends EventEmitter {
             if(socket.bytesWritten) {
               socket.destroy();
             } else {
-              socket.write(`HTTP/1.1 ${status} ${err.message}\r\n\r\n\r\n${err.message}`)
+              socket.write(`HTTP/1.1 ${status} ${err.message}\r\n\r\n${err.message}`)
+              ctx.state.status = status;
             }
           }
         } else {
@@ -87,10 +88,12 @@ class App extends EventEmitter {
             if(socket.bytesWritten) {
               socket.destroy();
             } else {
-              socket.write(`HTTP/1.1 ${status} ohhhh\r\n\r\n\r\n`);
+              socket.write(`HTTP/1.1 ${status} ohhhh\r\n\r\n`);
+              ctx.state.status = status;
             }
           }
         }
+        err.state = ctx.state;
         this.emit("error", err);
       } finally {
         if(res) {
@@ -109,6 +112,7 @@ class App extends EventEmitter {
               `Connection: close\r\n`,
               `\r\n`
             ].join(""));
+            ctx.state.status = 204;
           } else {
             if(!socket.writableEnded && !socket.destroyed)
               socket.end();
@@ -134,18 +138,18 @@ class ProxyServer {
   _pipe (...streams) {
     const set = new Set(streams);
     return new Promise((resolve, reject) => {
-      const errorHandler = err => {
+      const onerror = err => {
         reject(err);
         set.forEach(s => !s.destroyed && s.destroy());
         set.clear();
       };
-      set.forEach(s => s.once("error", errorHandler));
+      set.forEach(s => s.once("error", onerror));
       for (let i = 0; i < streams.length - 1; i++) {
         streams[i].pipe(streams[i + 1]);
       }
       streams[streams.length - 1].emitClose = true;
       streams[streams.length - 1].once("finish", resolve);
-      streams[streams.length - 1].once("close", reject);
+      streams[streams.length - 1].once("close", onerror);
     });
   }
 
@@ -235,18 +239,18 @@ class ProxyServer {
         return reject(err);
       };
   
-      const serverSocket = connect(state.port, state.hostname, () => {
-        state.statusCode = 200;
+      const outgoingSocket = connect(state.port, state.hostname, () => {
+        state.status = 200;
         socket.write("HTTP/1.1 200 Connection Established");
-        socket.write("\r\n\r\n\r\n");
+        socket.write("\r\n\r\n");
   
-        serverSocket.write(state.head);
-        serverSocket.removeListener("error", onerror);
+        outgoingSocket.write(state.head);
+        outgoingSocket.removeListener("error", onerror);
   
-        this._pipe(socket, serverSocket, socket).then(resolve, onerror);
+        this._pipe(socket, outgoingSocket, socket).then(resolve, onerror);
       });
       
-      serverSocket.once("error", onerror);
+      outgoingSocket.once("error", onerror);
     });
   }
 }

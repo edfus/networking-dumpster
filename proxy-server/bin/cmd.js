@@ -18,7 +18,7 @@ app.prepend(
       ctx.ip,
       ctx.req.method,
       ctx.url,
-      ctx.state.statusCode || ctx.res && ctx.res.statusCode
+      ctx.state.status || ctx.res && ctx.res.statusCode
     );
   }
 );
