@@ -63,7 +63,14 @@ export declare class App extends EventEmitter {
 }
 
 export declare class ProxyServer {
-  constructor();
+  constructor(
+    downstreamProxyURL: string | URL,
+    downstreamProxyOptions: {
+      proxyHeaders?: Headers;
+      defaultHeaders?: Headers;
+      agentOptions: AgentOptions;
+    }
+  );
 
   [Symbol.iterator](): IterableIterator<Middleware>;
 

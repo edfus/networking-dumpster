@@ -1,6 +1,7 @@
 import { EventEmitter } from "events";
-import { createServer, ServerResponse, request } from "http";
-import { connect } from "net";
+import { createServer, ServerResponse, request as httpRequest } from "http";
+import DownstreamProxy from "forward-proxy-tunnel";
+import { connect as tcpConnect } from "net";
 
 class App extends EventEmitter {
   middlewares = [];
@@ -31,10 +32,17 @@ class App extends EventEmitter {
 
   callback () {
     if (!this.listenerCount('error')) {
-      console.info(
-        "\x1b[1m\x1b[30mNo listener attached for 'error' event,",
-        "forwarding all errors to console...\x1b[0m"
-      );
+      const info = [
+        "No listener attached for 'error' event, ",
+        "forwarding all errors to console..."
+      ];
+
+      if(checkIsColorEnabled(process.stdout)) {
+        info.unshift("\x1b[1m\x1b[30m");
+        info.push("\x1b[0m");
+      }
+
+      console.info(info.join(""));
       this.on('error', console.error);
     }
 
@@ -52,11 +60,14 @@ class App extends EventEmitter {
         ...this.context,
         req, res, socket,
         state: {
-          head,
           event: ["connect", "request"][res === null ? 0 : 1]
         },
         url: req.url,
         ip: socket.remoteAddress
+      }
+
+      if(head) {
+        ctx.state.head = head;
       }
 
       let index = 0;
@@ -135,22 +146,30 @@ class App extends EventEmitter {
 }
 
 class ProxyServer {
-  _pipe (...streams) {
-    const set = new Set(streams);
-    return new Promise((resolve, reject) => {
-      const onerror = err => {
-        reject(err);
-        set.forEach(s => !s.destroyed && s.destroy());
-        set.clear();
+  constructor (downstreamProxyURL, downstreamProxyOptions) {
+    if(!downstreamProxyOptions) {
+      downstreamProxyOptions = {
+        agentOptions: {
+          keepAlive: true
+        }
       };
-      set.forEach(s => s.once("error", onerror));
-      for (let i = 0; i < streams.length - 1; i++) {
-        streams[i].pipe(streams[i + 1]);
-      }
-      streams[streams.length - 1].emitClose = true;
-      streams[streams.length - 1].once("finish", resolve);
-      streams[streams.length - 1].once("close", onerror);
-    });
+    }
+    
+    if(downstreamProxyURL) {
+      this.downstream = new DownstreamProxy(downstreamProxyURL, downstreamProxyOptions);
+      this._request = this.downstream.request.bind(this.downstream);
+      this._connect = this.downstream.createConnection.bind(this.downstream);
+    } else {
+      this._request = httpRequest;
+      this._connect = (options, cb) => {
+        const socket = tcpConnect(options);
+        socket.once("error", cb);
+        socket.once("connect", () => {
+          socket.removeListener("error", cb);
+          return cb(null, socket);
+        });
+      };
+    }
   }
 
   * [Symbol.iterator] () {
@@ -191,7 +210,7 @@ class ProxyServer {
         return reject(err);
       };
       
-      const outgoingRequest = request(
+      const outgoingRequest = this._request(
         state.uriObject, 
         {
           method: clientRequest.method,
@@ -239,21 +258,57 @@ class ProxyServer {
         return reject(err);
       };
   
-      const outgoingSocket = connect(state.port, state.hostname, () => {
-        state.status = 200;
-        socket.write("HTTP/1.1 200 Connection Established");
-        socket.write("\r\n\r\n");
-  
-        outgoingSocket.write(state.head);
-        outgoingSocket.removeListener("error", onerror);
-  
-        this._pipe(socket, outgoingSocket, socket).then(resolve, onerror);
-      });
-      
-      outgoingSocket.once("error", onerror);
+      this._connect(
+        {
+          port: state.port,
+          host: state.hostname
+        }, 
+        (err, outgoingSocket) => {
+          if(err)
+            return onerror(err);
+
+          state.status = 200;
+          socket.write("HTTP/1.1 200 Connection Established");
+          socket.write("\r\n\r\n");
+    
+          outgoingSocket.write(state.head);
+    
+          this._pipe(socket, outgoingSocket, socket).then(resolve, onerror);
+        }
+      );
     });
   }
+
+  _pipe (...streams) {
+    const set = new Set(streams);
+    return new Promise((resolve, reject) => {
+      const onerror = err => {
+        reject(err);
+        set.forEach(s => !s.destroyed && s.destroy());
+        set.clear();
+      };
+      set.forEach(s => s.once("error", onerror));
+      for (let i = 0; i < streams.length - 1; i++) {
+        streams[i].pipe(streams[i + 1]);
+      }
+      streams[streams.length - 1].emitClose = true;
+      streams[streams.length - 1].once("finish", resolve);
+      streams[streams.length - 1].once(
+        "close", 
+        errored => errored ? onerror(new Error("unknown error")) : resolve()
+      );
+    });
+  }
+
 }
 
-
 export { App, ProxyServer };
+
+function checkIsColorEnabled(tty) {
+  return "FORCE_COLOR" in process.env
+    ? [1, 2, 3, "", true, "1", "2", "3", "true"].includes(process.env.FORCE_COLOR)
+    : !(
+      "NO_COLOR" in process.env ||
+      process.env.NODE_DISABLE_COLORS == 1 // using == by design
+    ) && tty.isTTY;
+}

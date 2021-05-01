@@ -15,7 +15,9 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@types/mocha": "^8.2.2",
-    "forward-proxy-tunnel": "^1.1.8"
+    "@types/mocha": "^8.2.2"
+  },
+  "dependencies": {
+    "forward-proxy-tunnel": "^1.1.9"
   }
 }

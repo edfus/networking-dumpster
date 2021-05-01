@@ -2,7 +2,6 @@ import { strictEqual } from "assert";
 import { App, ProxyServer } from "../index.js";
 import ProxyTunnel from "forward-proxy-tunnel";
 
-// process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = 0;
 const port = 8081;
 const hostname = "127.0.0.1";
 
@@ -22,7 +21,7 @@ app.prepend(
       ctx.ip,
       ctx.req.method,
       ctx.url,
-      ctx.res && ctx.res.statusCode
+      ctx.state.status || ctx.res?.statusCode
     );
   }
 );
@@ -65,41 +64,36 @@ describe("proxy server", () => {
     );
 
     await Promise.all([
-      proxy.fetch("https://www.baidu.com")
+      proxy.fetch("http://www.google.com/generate_204")
         .then(res => {
-          strictEqual(res.statusCode, 200);
+          strictEqual(res.statusCode, 204);
           res.resume();
         }),
-      proxy.fetch("http://www.baidu.com")
+      proxy.fetch("https://www.google.com/generate_204")
+        .then(res => {
+          strictEqual(res.statusCode, 204);
+          res.resume();
+        }),
+      proxy.fetch("https://www.google.com/teapot")
+        .then(res => {
+          strictEqual(res.statusCode, 418);
+          res.resume();
+        }),
+      proxy.fetch("https://nodejs.org")
+        .then(res => {
+          strictEqual(res.statusCode, 302);
+          res.resume();
+        }),
+      proxy.fetch("https://developer.mozilla.org", { method: "POST", body: "bot" })
+        .then(res => {
+          strictEqual(res.statusCode, 403);
+          res.resume();
+        }),
+      proxy.fetch("https://github.com/", { method: "HEAD" })
         .then(res => {
           strictEqual(res.statusCode, 200);
           res.resume();
         })
-      // proxy.fetch("https://www.google.com/generate_204")
-      //   .then(res => {
-      //     strictEqual(res.statusCode, 204);
-      //     res.resume();
-      //   }),
-      // proxy.fetch("https://www.google.com/teapot")
-      //   .then(res => {
-      //     strictEqual(res.statusCode, 418);
-      //     res.resume();
-      //   }),
-      // proxy.fetch("https://nodejs.org")
-      //   .then(res => {
-      //     strictEqual(res.statusCode, 302);
-      //     res.resume();
-      //   }),
-      // proxy.fetch("https://developer.mozilla.org", { method: "POST", body: "bot" })
-      //   .then(res => {
-      //     strictEqual(res.statusCode, 403);
-      //     res.resume();
-      //   }),
-      // proxy.fetch("https://github.com/", { method: "HEAD" })
-      //   .then(res => {
-      //     strictEqual(res.statusCode, 200);
-      //     res.resume();
-      //   })
     ]);
   }).timeout(5000);
 });
