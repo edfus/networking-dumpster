@@ -1,8 +1,10 @@
 import cookieParser from "set-cookie-parser";
 import ProxyTunnel from "forward-proxy-tunnel";
+import { SocksClient } from 'socks';
 
 import { request as request_https, Agent as HTTPSAgent } from "https";
 import { request as request_http, Agent as HTTPAgent, ClientRequest, IncomingMessage } from "http";
+import { connect as tlsConnect } from "tls";
 import { dirname } from "path";
 import { fileURLToPath } from "url";
 import { inspect } from "util";
@@ -121,27 +123,77 @@ class Cookie {
 }
 
 class HTTP {
+  cookie = new Cookie();
+  lastContext = new URL("http://localhost");
+  defaultHeader = {
+    "Accept": "*/*",
+    "User-Agent": `node ${process.version}`
+  };
+
+  httpAgent = new HTTPAgent({
+    keepAlive: true
+  });
+  httpsAgent = new HTTPSAgent({
+    keepAlive: true
+  });
+
   constructor(proxy, useProxy) {
     if (proxy && useProxy) {
-      this.proxy = new ProxyTunnel(proxy);
-      this._request = this.proxy.request.bind(this.proxy);
-      process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = 0;
+      const [protocol, host] = proxy.split("://");
+
+      if(protocol.startsWith("http")) {
+        this.proxy = new ProxyTunnel(proxy);
+        this._request = this.proxy.request.bind(this.proxy);
+      } else if(protocol.startsWith("socks")){
+        const version = /socks(\d)[ha]?/.exec(protocol)[1];
+        const { hostname, port } = new URL("http://".concat(host));
+
+        this.socksConnectOptions = {
+          proxy: {
+            host: hostname,
+            port: Number(port),
+            type: Number(version)
+          },
+          command: 'connect'
+        }
+
+        const createConnection = ({ host, port }, cb) => {
+          SocksClient.createConnection(
+            {
+              ...this.socksConnectOptions,
+              destination: {
+                host, port
+              }
+            },
+            (err, info) => cb(err, info?.socket)
+          );
+        }
+
+        const createSecureConnection = (options, cb) => {
+          const { host: hostname, port } = options;
+          
+          return createConnection(
+            options,
+            (err, socket) => {
+              if(err)
+                return cb(err);
+      
+              return cb(null, tlsConnect({
+                host: hostname,
+                servername: hostname,
+                port: port,
+                socket: socket
+              }));
+            }
+          );
+        }
+
+        this.httpAgent.createConnection = createConnection;
+        this.httpsAgent.createConnection = createSecureConnection;
+      } else {
+        throw new TypeError(`unknown protocol prefix ${protocol} specified.`);
+      }
     }
-    this.cookie = new Cookie();
-    this.lastContext = new URL("http://localhost");
-
-    this.defaultHeader = {
-      "Accept": "*/*",
-      "User-Agent": `node ${process.version}`
-    };
-
-    this.httpAgent = new HTTPAgent({
-      keepAlive: true
-    });
-
-    this.httpsAgent = new HTTPSAgent({
-      keepAlive: true
-    });
   }
 
   _request(uriObject, options, cb) {
@@ -343,10 +395,10 @@ function series(...argv) {
         ret = await func(ret);
       } catch (err) {
         const error = err instanceof Error ? err : new Error(err);
-        error.message += [
+        error.message += (error.message.endsWith("\n") ? "" : "\n") + [
           `\nThis exception was thrown from`,
-          func.name.concat(",\n"),
-          "which is the",
+          func.name.concat(","),
+          "\nwhich is the",
           String(i + 1).concat(["st", "nd", "rd"][i] || "th"),
           "child of",
           `[${argv.slice(0, argv.length - 1).map(f => f.name).join(", ")}]`

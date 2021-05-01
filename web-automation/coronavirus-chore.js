@@ -17,16 +17,31 @@ if (!existsSync(dumpPath))
   mkdirSync(dumpPath);
 
 const argvs = process.argv.slice(2);
-const useProxy = extractArg(/--proxy/) !== false;
-const http = new HTTP("http://localhost:8888", useProxy);
 
-const sanitize = extractArg(/--sanitize/) !== false;
+const httpProxy = extractArg(/^--proxy$/, 1);
+const socksProxy = extractArg(/^--socks(5|5h|4a)$/, 1);
+const sanitize = extractArg(/^--sanitize$/, 0) !== false;
 
-if(sanitize)
-  helper.logResInfo = res => res.statusCode;
+let proxy;
+if(httpProxy) {
+  proxy = httpProxy.replace(/^(?<!https?:\/\/)(.)/, "http://$1");
+} else {
+  proxy = socksProxy && socksProxy.replace(/^(?<!socks(5|5h|4a):\/\/)(.)/, "socks5://$2");
+}
 
-if(argvs.length)
+if(argvs.length) {
   console.warn("Unrecognized arguments:", argvs);
+}
+
+if(proxy) {
+  console.info(`Using proxy ${proxy}`)
+}
+
+if(sanitize) {
+  helper.logResInfo = res => res.statusCode;
+}
+
+const http = new HTTP(proxy, proxy !== false);
 
 helper.series(
   getLoginHTML,
