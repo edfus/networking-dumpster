@@ -21,10 +21,9 @@ jobs:
             -t pwd
             -u ${{ secrets.SSLVPN_USER }}
             -p ${{ secrets.SSLVPN_PASS }}
-          # danted will fail if port 1080 already in use
         options: >-
           --device /dev/net/tun --cap-add NET_ADMIN
-          --health-cmd "danted || exit 0" 
+          --health-cmd "echo $(ps | sed -n '/daemon\s*danted/p') || exit 1" 
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
