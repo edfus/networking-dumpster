@@ -8,14 +8,37 @@ jobs:
   run:
     environment: daily-routine-cc
     runs-on: ubuntu-latest
+    services:
+      # https://github.com/Hagb/docker-easyconnect
+      easyconnect-sslvpn-socks5:
+        image: hagb/docker-easyconnect:cli
+        # volumes:
+        #   - easyconn:/root/.easyconn
+        ports:
+          - 1080:1080
+        env:
+          EC_VER: 7.6.7
+          CLI_OPTS: >-
+            -d ${{ secrets.SSLVPN_URI }}
+            -t "pwd"
+            -u ${{ secrets.SSLVPN_USER }}
+            -p ${{ secrets.SSLVPN_PASS }}
+          # EXIT: 0
+        options: >-
+          --device /dev/net/tun --cap-add NET_ADMIN
+          --name 'easyconnect' --tmpfs
+          --health-cmd /usr/share/sangfor/EasyConnect/resources/bin/EasyMonitor 
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       # setup
       - uses: actions/checkout@v2
+      # node
       - name: Set up Node.js
         uses: actions/setup-node@v2
         with:
           node-version: 15
-      # node
       - name: Cache node modules
         uses: actions/cache@v2
         with:
@@ -25,12 +48,12 @@ jobs:
       - name: Run coronavirus chore
         env:
           CC_METADATA: ${{ secrets.CC_METADATA }}
+          SOCKS5_PROXY: ${{ job.services.easyconnect-sslvpn-socks5.ports['1080'] }}
         run: |
           cd web-automation
           mkdir -p .secrets
           cat>.secrets/cc-metadata.js<<EOF
           ${CC_METADATA}
           EOF
-          tail .secrets/cc-metadata.js
           npm install 1>/dev/null
-          node coronavirus-chore.js --sanitize 1>/dev/null
+          node coronavirus-chore.js --sanitize --socks5 "${SOCKS5_PROXY}" 1>/dev/null
