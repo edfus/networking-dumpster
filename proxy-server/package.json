@@ -2,11 +2,20 @@
   "name": "proxy-server",
   "version": "1.0.0",
   "description": "",
+  "type": "module",
   "main": "index.js",
+  "bin": {
+    "create-proxy": "./bin/cmd.js"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "proxy": "node ./bin/cmd.js",
+    "test": "mocha"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "@types/mocha": "^8.2.2",
+    "forward-proxy-tunnel": "^1.1.8"
+  }
 }

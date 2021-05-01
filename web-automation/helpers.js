@@ -342,7 +342,16 @@ function series(...argv) {
       try {
         ret = await func(ret);
       } catch (err) {
-        return callback(err instanceof Error ? err : new Error(err));
+        const error = err instanceof Error ? err : new Error(err);
+        error.message += [
+          `\nThis exception was thrown from`,
+          func.name.concat(",\n"),
+          "which is the",
+          String(i + 1).concat(["st", "nd", "rd"][i] || "th"),
+          "child of",
+          `[${argv.slice(0, argv.length - 1).map(f => f.name).join(", ")}]`
+        ].join(" ");
+        return callback(error);
       }
     }
     return callback(null);
