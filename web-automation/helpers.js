@@ -395,8 +395,8 @@ function series(...argv) {
         ret = await func(ret);
       } catch (err) {
         const error = err instanceof Error ? err : new Error(err);
-        error.message += (error.message.endsWith("\n") ? "" : "\n") + [
-          `\nThis exception was thrown from`,
+        error.from = [
+          `This exception was thrown from`,
           func.name.concat(","),
           "\nwhich is the",
           String(i + 1).concat(["st", "nd", "rd"][i] || "th"),

@@ -57,17 +57,6 @@ helper.series(
   }
 );
 
-// helper.series(
-//   getLoginHTML,
-//   jsdomLogin,
-//   resendUnchecked,
-//   console.info,
-//   err => {
-//     if (err) throw err;
-//     process.exitCode = 0;
-//   }
-// );
-
 async function getLoginHTML() {
   return http.fetch({
     hostname: metadata.hostname,
