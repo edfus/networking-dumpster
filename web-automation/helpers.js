@@ -5,12 +5,12 @@ import { SocksClient } from 'socks';
 import { request as request_https, Agent as HTTPSAgent } from "https";
 import { request as request_http, Agent as HTTPAgent, ClientRequest, IncomingMessage } from "http";
 import { connect as tlsConnect } from "tls";
-import { dirname } from "path";
+import { basename, dirname } from "path";
 import { fileURLToPath } from "url";
 import { inspect } from "util";
-import { strictEqual } from "assert";
-import { Transform } from "stream";
-import { createHash, createHmac } from "crypto";
+import { ok as assert, strictEqual } from "assert";
+import { Readable, Transform } from "stream";
+import { createHash, createHmac, randomBytes } from "crypto";
 
 
 class Cookie {
@@ -249,10 +249,13 @@ class HTTP {
       uriObject.protocol === "https:"
     );
 
-    return this._request(uriObject, options, cb)
-      .setHeader("cookie", cookie) // returns undefined in 12.9.0
-      .prependOnceListener("response", res => this.cookie.add(uriObject.hostname, res))
-    ;
+    const req = this._request(uriObject, options, cb);
+
+    if(cookie) {
+      req.setHeader("cookie", cookie); // returns undefined in 12.9.0
+    }
+
+    return req.prependOnceListener("response", res => this.cookie.add(uriObject.hostname, res));
   }
 
   async fetch(_input, _options) {
@@ -284,19 +287,224 @@ class HTTP {
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const kOnceResume = Symbol("onceResume");
+const kReading = Symbol("reading");
+const kReadNext = Symbol("readNext");
+
+class FormDataStream extends Readable {
+  lineBreak = "\r\n";
+  defaultContentType = "application/octet-stream";
+
+  constructor(iterator) {
+    super();
+    this.iterator = iterator;
+    this.boundary = this.generateBoundary();
+  }
+
+  async readNext () {
+    this[kReading] = true;
+    const boundary = this.boundary;
+    const { done, value } = this.iterator.next();
+    
+    if(done) {
+      this.push(`--${boundary}--`);
+      this[kReading] = false;
+      return this.push(null);
+    }
+
+    const [name, content] = value;
+    
+    this.push(`--${boundary}`);
+    this.push(this.lineBreak);
+
+    this.push(`Content-Disposition: form-data; name="${encodeURIComponent(name)}"`);
+    // Readable or { source, filename, contentType, contentTransferEncoding }
+    if(content instanceof Readable || content.source) {
+      const source = content.source || content;
+      const filename = content.filename || basename(content.path || "") || name;
+      const contentType = content.contentType || this.defaultContentType;
+      
+      this.push(`; filename="${encodeURIComponent(filename)}"`);
+      this.push(this.lineBreak);
+
+      await this.streamFileField(source, contentType, content.contentTransferEncoding);
+    } else {
+      this.push(this.lineBreak);
+      // Array
+      if(Array.isArray(content)) {
+        let filenameIndex = 0;
+        const subBoundary = this.generateBoundary();
+        this.push(`Content-Type: multipart/mixed; boundary=${subBoundary}`);
+        this.push(this.lineBreak.repeat(2));
+
+        /**
+         * source: string | Buffer | Readable,
+         * filename: string,
+         * contentType: string,
+         * contentTransferEncoding: string
+         */
+        for (const file of content) {
+          this.push(`--${subBoundary}`);
+          this.push(this.lineBreak);
+
+          if(file instanceof Readable) {
+            const filename = basename(file.path || "") || `${name}-${filenameIndex++}`;
+            this.push(
+              `Content-Disposition: file; filename="${
+                encodeURIComponent(filename)
+              }"`
+            );
+            this.push(this.lineBreak);
+            await this.streamFileField(file, this.defaultContentType);
+            continue;
+          }
+
+          this.push(
+            `Content-Disposition: file; filename="${
+              encodeURIComponent(file.filename || `${name}-${filenameIndex++}`)
+            }"`
+          );
+          this.push(this.lineBreak);
+          await this.streamFileField(file.source, file.contentType, file.contentTransferEncoding);
+        }
+
+        this.push(`--${subBoundary}--`);
+        this.push(this.lineBreak);
+      } else {
+        // buffer or string
+        await this.streamFileField(content, this.defaultContentType);
+      }
+    }
+
+    if(this[kReadNext]) {
+      return this.readNext();
+    } else {
+      return this[kReading] = false;
+    }
+  }
+
+  async onceResume () {
+    if(this[kOnceResume]?.promise) {
+      return this[kOnceResume].promise;
+    } else {
+      this[kOnceResume] = {};
+      const promise = new Promise((resolve, reject) => {
+        this[kOnceResume].resolve = () => {
+          this[kOnceResume] = null;
+          return resolve();
+        };
+        this[kOnceResume].reject = reject;
+      });
+      this[kOnceResume].promise = promise;
+      return promise;
+    }
+  }
+
+  _destroy(err, cb) {
+    if(this[kOnceResume]?.reject) {
+      this[kOnceResume].reject(err);
+    }
+    return cb(err);
+  }
+
+  _read(size) {
+    if(this[kReading]) {
+      if(this[kOnceResume]?.resolve) {
+        return this[kOnceResume].resolve();
+      } else {
+        /**
+         * Once the readable._read() method has been called,
+         * it will not be called again until more data is pushed
+         * through the readable.push()` method. 
+         */
+        return this[kReadNext] = true;
+      }
+    } else {
+      return this.readNext();
+    }
+  }
+
+  /**
+   * https://github.com/form-data/form-data/blob/master/lib/form_data.js
+   * Optimized for boyer-moore parsing
+   */
+  generateBoundary() {
+    return "-".repeat(16).concat(randomBytes(20).toString("base64"));
+  }
+
+  async streamFileField (file, contentType, contentTransferEncoding) {
+    this.push(`Content-Type: ${contentType}`);
+    if(contentTransferEncoding) {
+      this.push(this.lineBreak);
+      this.push(`Content-Transfer-Encoding: ${contentTransferEncoding}`);
+    }
+    this.push(this.lineBreak.repeat(2));
+    
+    assert(file);
+  
+    if(file.length) { // string or Buffer 
+      this.push(file, contentTransferEncoding || null);
+      return this.push(this.lineBreak);
+    }
+
+    for await (const chunk of this.readStream(file)) {
+      if(this.push(chunk) === false) {
+        await this.onceResume();
+      }
+    }
+
+    this.push(this.lineBreak);
+  }
+
+  async * readStream (stream) {
+    if(!(stream instanceof Readable))
+      throw new Error(`Received non-Readable stream ${stream}`);
+
+    let chunk;
+    while (stream.readable) {
+      await new Promise((resolve, reject)=> {
+        stream.once("error", reject)
+            .once("end", resolve)
+            .once("readable", () => {
+              stream.removeListener("end", resolve);
+              stream.removeListener("error", reject);
+              return resolve();
+            });
+      });
+
+      if(!stream.readable) break;
+
+      while (null !== (chunk = stream.read())) {
+        yield chunk;
+      }
+    }
+  }
+}
 
 /**
  * https://www.w3.org/TR/html401/interact/forms.html#h-17.13.4
- * @param { FormData, object } formData 
+ * @param { FormData } formData an object implemented FormData interface
  * @param {"multipart/form-data" | "application/x-www-form-urlencoded"} type 
- * @returns string
+ * @returns { body: string | Readable, headers: object }
  */
-function serializeFormData(formData, type) {
-  const iterator = formData.entries ? formData.entries() : Object.entries(formData);
+function serializeFormData(formData, type = formData?.type) {
+  const iterator = (
+    typeof formData.entries === "function"
+    ? formData.entries()
+    : formData[Symbol.iterator]
+      ? formData[Symbol.iterator]()
+      : Object.entries(formData)[Symbol.iterator]()
+  );
   
   switch (type) {
     case "multipart/form-data":
-      throw new Error("todo");
+      const formDataStream = new FormDataStream(iterator);
+      return {
+        body: formDataStream,
+        headers: {
+          "Content-Type": `multipart/form-data; boundary=${formDataStream.boundary}; charset=UTF-8`
+        }
+      }
     default:
       type && console.warn(`Unknown type ${type} will be treated as application/x-www-form-urlencoded.`)
     case "application/x-www-form-urlencoded":

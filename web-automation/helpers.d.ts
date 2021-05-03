@@ -2,7 +2,7 @@
 // import("./node_modules/forward-proxy-tunnel/index.d.ts");
 // https://stackoverflow.com/questions/39040108/import-class-in-definition-file-d-ts
 import { IncomingMessage } from "http";
-import { Transform } from "stream";
+import { Transform, Readable } from "stream";
 import ProxyTunnel from "forward-proxy-tunnel";
 
 export declare class HTTP extends ProxyTunnel {
@@ -38,8 +38,8 @@ declare function series (
 
 declare function serializeFormData (
   formData: FormData,
-  type: "multipart/form-data" | "x-www-form-url-encoded"
-) : string
+  type?: "multipart/form-data" | "application/x-www-form-urlencoded"
+) : { body: string | Readable, headers: object }
 
 declare function escapeRegExpSource (source: string): string
 
