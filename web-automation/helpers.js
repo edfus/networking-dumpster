@@ -9,7 +9,7 @@ import { dirname } from "path";
 import { fileURLToPath } from "url";
 import { inspect } from "util";
 import { strictEqual } from "assert";
-import { pipeline, Readable, Transform } from "stream";
+import { Transform } from "stream";
 import { createHash, createHmac } from "crypto";
 
 
@@ -18,6 +18,7 @@ class Cookie {
     const regexMap = new Map();
     const cache = new Map();  //NOTE possible memory leak
     this.storage = new class CookieMap extends Map {
+      // match cookie.domain, cookie.path, cookie.secure
       get(domainWithPath, isInSecureContext) {
         let cachedPattern = cache.get(domainWithPath);
         if (cachedPattern)
@@ -37,6 +38,7 @@ class Cookie {
         return "";
       }
 
+      // handle cookie.maxAge || cookie.expires
       serialize(cookiesArray, inSecureContext) {
         if (!Array.isArray(cookiesArray))
           return "";
@@ -89,36 +91,42 @@ class Cookie {
       request.setHeader("cookie", cookie);
       return request;
     }
-    return void 0;
+    console.warn(`Received non-ClientRequest ${request}`);
+    return request;
   }
 
-  add(request, response) {
-    if (response instanceof IncomingMessage) { // response
-      const cookies = cookieParser.parse(
-        response,
-        {
-          decodeValues: false
-        }
-      );
-
-      const hostname = request.host || request;
-      cookies.forEach(cookie => {
-        if (cookie.domain)
-          cookie.domain = cookie.domain.replace(/^\./, "");
-        this.storage.add(
-          (cookie.domain || hostname).concat(cookie.path || "/"),
-          {
-            value: `${cookie.name}${cookie.value ? "=".concat(cookie.value) : ""}`,
-            expires: cookie.maxAge ? Date.now() + cookie.maxAge * 1000 : Number(cookie.expires) || NaN,
-            secure: cookie.secure || false
-            // sameSite: ""
-          }
-        );
-      });
-      return true;
+  /**
+   * @param {string | URL | ClientRequest} input 
+   * @param {IncomingMessage} response 
+   * @returns boolean
+   */
+  add(input, response) {
+    if (!(response instanceof IncomingMessage)) {
+      console.warn(`Received non-IncomingMessage ${response}`);
+      return false;
     }
 
-    return false;
+    const cookies = cookieParser.parse(
+      response, {
+      decodeValues: false
+    }
+    );
+
+    const hostname = input.hostname || input.host || input;
+    cookies.forEach(cookie => {
+      if (cookie.domain)
+        cookie.domain = cookie.domain.replace(/^\./, "");
+      this.storage.add(
+        (cookie.domain || hostname).concat(cookie.path || "/"),
+        {
+          value: `${cookie.name}${cookie.value ? "=".concat(cookie.value) : ""}`,
+          expires: cookie.maxAge ? Date.now() + cookie.maxAge * 1000 : Number(cookie.expires) || NaN,
+          secure: cookie.secure || false
+          // sameSite: ""
+        }
+      );
+    });
+    return true;
   }
 }
 
@@ -130,68 +138,71 @@ class HTTP {
     "User-Agent": `node ${process.version}`
   };
 
-  httpAgent = new HTTPAgent({
-    keepAlive: true
-  });
-  httpsAgent = new HTTPSAgent({
-    keepAlive: true
-  });
+  httpAgent = new HTTPAgent({ keepAlive: true });
+  httpsAgent = new HTTPSAgent({ keepAlive: true });
 
   constructor(proxy, useProxy) {
     if (proxy && useProxy) {
       const [protocol, host] = proxy.split("://");
 
-      if(protocol.startsWith("http")) {
-        this.proxy = new ProxyTunnel(proxy);
-        this._request = this.proxy.request.bind(this.proxy);
-      } else if(protocol.startsWith("socks")){
-        const version = /socks(\d)[ha]?/.exec(protocol)[1];
-        const { hostname, port } = new URL("http://".concat(host));
+      switch (protocol) {
+        case "http":
+        case "https":
+          this.proxy = new ProxyTunnel(proxy, { agentOptions: { keepAlive: true } });
+          this._request = this.proxy.request.bind(this.proxy);
+          break;
+        case "socks4":
+        case "socks4a":
+        case "socks5":
+        case "socks5h":
+          const version = /^socks(\d)/.exec(protocol)[1];
+          const { hostname, port } = new URL("http://".concat(host));
 
-        this.socksConnectOptions = {
-          proxy: {
-            host: hostname,
-            port: Number(port),
-            type: Number(version)
-          },
-          command: 'connect'
-        }
-
-        const createConnection = ({ host, port }, cb) => {
-          SocksClient.createConnection(
-            {
-              ...this.socksConnectOptions,
-              destination: {
-                host, port
-              }
+          this.socksConnectOptions = {
+            proxy: {
+              host: hostname,
+              port: Number(port),
+              type: Number(version)
             },
-            (err, info) => cb(err, info?.socket)
-          );
-        }
+            command: 'connect'
+          };
 
-        const createSecureConnection = (options, cb) => {
-          const { host: hostname, port } = options;
-          
-          return createConnection(
-            options,
-            (err, socket) => {
-              if(err)
-                return cb(err);
-      
-              return cb(null, tlsConnect({
-                host: hostname,
-                servername: hostname,
-                port: port,
-                socket: socket
-              }));
-            }
-          );
-        }
+          const createConnection = ({ host, port }, cb) => {
+            SocksClient.createConnection(
+              {
+                ...this.socksConnectOptions,
+                destination: {
+                  host, port
+                }
+              },
+              (err, info) => cb(err, info?.socket)
+            );
+          };
 
-        this.httpAgent.createConnection = createConnection;
-        this.httpsAgent.createConnection = createSecureConnection;
-      } else {
-        throw new TypeError(`unknown protocol prefix ${protocol} specified.`);
+          const createSecureConnection = (options, cb) => {
+            const { host: hostname, port } = options;
+
+            return createConnection(
+              options,
+              (err, socket) => {
+                if (err)
+                  return cb(err);
+
+                return cb(null, tlsConnect({
+                  host: hostname,
+                  servername: hostname,
+                  port: port,
+                  socket: socket
+                }));
+              }
+            );
+          };
+
+          this.httpAgent.createConnection = createConnection;
+          this.httpsAgent.createConnection = createSecureConnection;
+          break;
+        default:
+          throw new TypeError(`unknown protocol prefix ${protocol} specified.`);
       }
     }
   }
@@ -217,7 +228,7 @@ class HTTP {
 
   parseRequestParams(input, options, cb) {
     if (typeof input === "string") {
-      if(input.startsWith("/")) // from root
+      if (input.startsWith("/")) // from root
         input = new URL(input, this.lastContext.origin);
       if (/\.+\//.test(input)) // relative ../ | ./
         input = new URL(input, `${this.lastContext.protocol}//${this.lastContext.host}${this.lastContext.pathname}`);
@@ -245,37 +256,10 @@ class HTTP {
   }
 
   async fetch(_input, _options) {
-    const { uriObject, options } = this.parseRequestParams(_input, _options);
-
-    return (
-      new Promise((resolve, reject) => {
-        const req = (
-          this.request.call(this, uriObject, options)
-            .once("response", resolve)
-            .once("error", err => {
-              if (req.reusedSocket && err.code === 'ECONNRESET') {
-                req.removeListener("response", resolve);
-                this.fetch.apply(this, arguments).then(resolve, reject);
-              } else {
-                return reject(err);
-              }
-            })
-        );
-        const body = options.body || options.data;
-        if (body instanceof Readable) {
-          pipeline(
-            body,
-            req,
-            err => err && reject(err)
-          );
-        } else {
-          req.end(body);
-        }
-      })
-    );
+    return ProxyTunnel.prototype.fetch.call(this, _input, _options);
   }
 
-  async followRedirect(res, hostname) {
+  async followRedirect(res, host = this.lastContext.host) {
     if (![301, 302, 303, 307, 308].includes(res.statusCode))
       return res;
 
@@ -284,35 +268,48 @@ class HTTP {
     if (!res.headers.location)
       throw new Error(logResInfo(res));
 
-    let fetchPromise;
+    // URL
+    if (/^https?:/.test(res.headers.location)) {
+      const uriObject = new URL(res.headers.location);
 
-    if (/https?:/.test(res.headers.location)) {
-      fetchPromise = this.fetch(res.headers.location);
-    } else {
-      fetchPromise = this.fetch({
-        hostname: hostname,
-        path: res.headers.location
-      });
+      return this.fetch(uriObject).then(res => this.followRedirect(res, uriObject.host));
     }
 
-    return fetchPromise.then(res => this.followRedirect(res, hostname));
+    // URI
+    return (
+      this.fetch({ host, path: res.headers.location })
+          .then(res => this.followRedirect(res, host))
+    );
   }
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+/**
+ * https://www.w3.org/TR/html401/interact/forms.html#h-17.13.4
+ * @param { FormData, object } formData 
+ * @param {"multipart/form-data" | "application/x-www-form-urlencoded"} type 
+ * @returns string
+ */
 function serializeFormData(formData, type) {
   const iterator = formData.entries ? formData.entries() : Object.entries(formData);
-  if (type !== "multipart/form-data") {
-    // x-www-form-url-encoded
-    const result = [];
-    for (const [key, value] of iterator) {
-      result.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
-    }
-    return result.join("&");
-  } else {
-    //TODO
-    throw "todo";
+  
+  switch (type) {
+    case "multipart/form-data":
+      throw new Error("todo");
+    default:
+      type && console.warn(`Unknown type ${type} will be treated as application/x-www-form-urlencoded.`)
+    case "application/x-www-form-urlencoded":
+      const result = [];
+      for (const [key, value] of iterator) {
+        result.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+      }
+      return {
+        body: result.join("&"),
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
+        }
+      };
   }
 }
 
@@ -347,12 +344,14 @@ class JSONParser extends Transform {
   }
 }
 
-const escapeRegEx = new RegExp(
-  "(" + "[]\^$.|?*+(){}".split("").map(c => "\\".concat(c)).join("|") + ")",
-  "g"
-);
-
+let escapeRegEx;
 function escapeRegExpSource(str) {
+  if(!escapeRegEx) {
+    escapeRegEx = new RegExp(
+      "(" + "[]\^$.|?*+(){}".split("").map(c => "\\".concat(c)).join("|") + ")",
+      "g"
+    );
+  }
   return str.replace(escapeRegEx, "\\$1");
 }
 

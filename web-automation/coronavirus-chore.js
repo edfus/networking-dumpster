@@ -24,7 +24,7 @@ const sanitize = extractArg(/^--sanitize$/, 0) !== false;
 
 let proxy;
 if(httpProxy) {
-  proxy = httpProxy.replace(/^(?<!https?:\/\/)(.)/, "http://$1");
+  proxy = /^https?:\/\//.test(httpProxy) ? httpProxy : "http://".concat(httpProxy);
 } else {
   proxy = socksProxy && socksProxy.replace(/^(?<!socks(5|5h|4a):\/\/)(.)/, "socks5://$2");
 }
@@ -101,14 +101,15 @@ async function jsdomLogin(filepath) {
 
     const uri = form.action || 'get';
     const type = form.enctype || 'application/x-www-form-urlencoded';
+    const { body, headers } = helper.serializeFormData(new FormData(form), type);
 
     return http.fetch(
       uri,
       {
         method: form.method,
-        body: helper.serializeFormData(new FormData(form), type),
+        body: body,
         headers: {
-          "Content-type": type
+          ...headers
         }
       }
     ).then(res => {
