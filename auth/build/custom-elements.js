@@ -5,8 +5,98 @@ const jwtTemplate = document.createElement("template");
 const jwtStyle    = document.createElement("style");
 const jwtContent  = document.createElement("section");
 
-jwtStyle.textContent   = `"{{IMPORT('./json-web-token/template.css')}}"`;
-jwtContent.textContent = `"{{IMPORT('./json-web-token/template.html')}}"`;
+jwtStyle.textContent   = `
+@import url("./style/root.css");
+
+[part="tab-wrap"]{
+  width: 100%;
+}
+
+[part="tab-nav"] {
+  margin-bottom: 1.5em;
+  display: flex;
+  width: 100%;
+}
+
+[part="tab-button"] {
+  text-decoration: none;
+  text-align: center;
+  border: 0;
+  width: 50%;
+  outline: none;
+  cursor: pointer;
+  background-color: inherit;
+}
+
+label {
+  border-top: 1px solid rgba(155,155,155,0.5);
+  border-bottom: 1px solid rgba(155,155,155,0.5);
+  line-height: 2.5;
+  padding: 0 .7em;
+}
+
+[part="tab"] {
+  width: 100%;
+  display: none;
+}
+[part="tab"].current {
+  display: block;
+}
+
+[part="tab-button"] {
+  font-size: 1em;
+  padding-bottom: .3em;
+  border-bottom: .3em solid transparent;
+}
+
+[part="tab-button"].current {
+  border-bottom: .3em solid #fb015b;
+}
+
+#decoded-jwt-header {
+  color: #fb015b;
+}
+#decoded-jwt-payload {
+  color: #d63aff;
+}
+#decoded-jwt-signature {
+  color: #00b9f1;
+}
+#encoded-jwt-content {
+  color: chartreuse;
+}
+#encoded-jwt-invalid-log {
+  color: crimson;
+}
+`;
+jwtContent.textContent = `
+<section part="tab-wrap">
+  <nav part="tab-nav" id="jwt-switch">
+    <button type="button" part="tab-button" class="current" for="encoded-jwt">Encoded</button>
+    <button type="button" part="tab-button" for="decoded-jwt">Decoded</button>
+  </nav>
+  <div part="tab-content" id="jwt-tab">
+    <div class="current" part="tab" id="encoded-jwt">
+      <pre id="encoded-jwt-content" contenteditable></pre>
+      <pre id="encoded-jwt-invalid-log"></pre>
+    </div>
+    <div id="decoded-jwt" part="tab">
+      <div>
+        <label for="decoded-jwt-header">HEADER:</label>
+        <textarea id="decoded-jwt-header"></textarea>
+      </div>
+      <div>
+        <label for="decoded-jwt-payload">PAYLOAD:</label>
+        <textarea id="decoded-jwt-payload"></textarea>
+      </div>
+      <div>
+        <label for="decoded-jwt-signature">SIGNATURE:</label>
+        <textarea id="decoded-jwt-signature"></textarea>
+      </div>
+    </div>
+  </div>
+</section>
+`;
 
 jwtTemplate.appendChild(jwtContent);
 jwtTemplate.appendChild(jwtStyle);

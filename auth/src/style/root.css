@@ -1,0 +1,77 @@
+:root {
+  --dark-mode-toggle-light-icon: url("../dark-mode-toggle/sun.png");
+  --dark-mode-toggle-dark-icon: url("../dark-mode-toggle/moon.png");
+  --dark-mode-toggle-remember-icon-unchecked: url("../dark-mode-toggle/unchecked.svg");
+  --dark-mode-toggle-remember-icon-checked: url("../dark-mode-toggle/checked.svg");
+  --background-color: rgb(240, 240, 240);
+  --text-color: rgb(15, 15, 15);
+  --inverted-text-color: white;
+  --readonly-bg-color: #026DC5;
+}
+
+html {
+  font-size: 30px;
+  color: var(--text-color);
+  background-color: var(--background-color);
+  font-family: sans-serif;
+}
+
+input,
+button,
+textarea,
+label {
+  font-size: .83rem;
+}
+
+input {
+  padding: 0.0625rem .125rem
+}
+
+button,
+input[type=reset] {
+  padding: 0.0625rem .375rem
+}
+
+input[type=range],
+input[type=checkbox] {
+  transform: scale(1.6);
+}
+
+input[type=range] {
+  margin: 0 1.4rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background-color: rgb(15, 15, 15);
+    --text-color: rgb(240, 240, 240);
+    --shadow-color: rgba(240, 240, 240, 0.5);
+    --accent-color: rgba(0, 0, 240, 0.5);
+  }
+  
+  html {
+    transition: color 1s, background-color 1s;
+  }
+  
+  img {
+    filter: grayscale(50%);
+  }
+  
+  .icon {
+    filter: invert(100%);
+  }
+  
+  a {
+    color: yellow;
+  }
+  
+  select,
+  input,
+  button,
+  textarea,
+  option {
+    color: var(--text-color);
+    background-color: var(--background-color);
+    border-color: var(--text-color);
+  }
+}

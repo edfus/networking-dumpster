@@ -2,6 +2,9 @@ import { streamEdit } from "stream-editor";
 import { EventEmitter } from "events";
 import { inspect } from "util";
 import { Writable } from "stream";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
+import { createReadStream, createWriteStream, existsSync, promises as fsp, readFileSync } from "fs";
 
 class InputAgent extends EventEmitter {
   middlewares = [];
@@ -232,12 +235,66 @@ agent.use(
 );
 
 agent.use(
-  (ctx, next) => {
-    if(/^(respond|-r)$/.test(ctx.input)) {
-      return ctx.agent.respond({ message: "text!"});
+  async (ctx, next) => {
+    if(/^(reload|-r)$/.test(ctx.input)) {
+      await reload();
+      await ctx.agent.respond("reloaded");
     }
     return next();
   }
 );
 
+const __dirname = dirname(join(fileURLToPath(import.meta.url), "./"));
+const destination = join(__dirname, "./build");
+const src = join(__dirname, "./src");
+
+async function reload() {
+  const promises = [];
+  for await (const filepath of getItemsIn(src)) {
+    const dest = join(destination, filepath.replace(src, ""));
+
+    if(!existsSync(dirname(dest))) {
+      await fsp.mkdir(dirname(dest), { recursive: true });
+    }
+
+    promises.push(
+      streamEdit({
+        from: createReadStream(filepath),
+        to: createWriteStream(dest),
+        replace: [
+          {
+            match: /"\{\{([A-Z_-]+?)\('(.+?)'\)\}\}"/,
+            replacement: (whole, method, input) => {
+              switch (method) {
+                case "IMPORT":
+                  const importFilePath = join(dirname(filepath), input);
+                  return readFileSync(importFilePath, "utf-8"); //TODO
+                default:
+                  throw new Error(`unknown method ${method} in ${whole}`);
+              }
+            }
+          }
+        ],
+        defaultOptions: {
+          isFullReplacement: true
+        }
+      })
+    );
+  }
+}
+
+reload();
 agent.listen();
+
+async function* getItemsIn(dir) {
+  const dirents = await fsp.readdir(dir, { withFileTypes: true });
+
+  for (const dirent of dirents) {
+    const path = join(dir, dirent.name);
+    if (dirent.isDirectory()) {
+      yield * getItemsIn(path);
+    } else {
+      yield path;
+    }
+  }
+}

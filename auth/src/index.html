@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Auth.local</title>
+  <link rel="stylesheet" href="./style/common.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.2.7/purify.min.js"></script>
+  <script type="module">
+    trustedTypes.createPolicy('default', {
+      createHTML: (string, sink) => DOMPurify.sanitize(string, { RETURN_TRUSTED_TYPE: true })
+    });
+  </script>
+  <script src="./custom-elements.js" type="module"></script>
+</head>
+
+<body>
+  <script type="module">
+    if (location.protocol !== 'https:') {
+      alert(`This page ${location.origin} is not secure`);
+    }
+  </script>
+  <main class="row">
+    <section class="column">
+      <section id="source" class="card">
+        <button type="button" id="source-next" class="card-button">Derive</button>
+        <div>
+          <label for="orin-password">Password:</label>
+          <input type="password" id="orin-password">
+        </div>
+      </section>
+      <section  class="card">
+        <json-web-token></json-web-token>
+      </section>
+    </section>
+    
+    <section class="column">
+      <div class="card" id="login-form">
+        <div>
+          <label for="username">Username:</label>
+          <input type="text" required name="username" autocomplete="username" id="username">
+        </div>
+        <div>
+          <label for="sha1-password">SHA-1ed Password: <small class="copy-component" for="sha1-password">✂️📋</small></label>
+          <input is="copyable-input" name="password" type="password" autocomplete="current-password" id="sha1-password"></input>
+        </div>
+      </div>
+    </section>
+    <script type="module">
+      const nextButton   = document.getElementById("source-next");
+      const rememberForm = document.getElementById("remember-form");
+    
+      const username = document.getElementById("username");
+      const orinPassword = document.getElementById("orin-password");
+      const sha1Password = document.getElementById("sha1-password");
+
+      sha1Password.addEventListener("focus", () => {
+        orinPassword.style.opacity = .4;
+      });
+
+      orinPassword.addEventListener("focus", event => {
+        event.target.style.opacity = 1;
+      });
+
+      nextButton.addEventListener("click", async () => {
+        if(!username)
+          return alert("Username required");
+        if(!sha1Password.value && !orinPassword.value)
+          return alert("Password required");
+        
+        if(!sha1Password.value || sha1Password.value.length !== 40) {
+          if(orinPassword.value) {
+            sha1Password.value = await sha1(orinPassword.value);
+          } else {
+            if(!sha1Password.value)
+              return alert("Input required");
+            if(sha1Password.value.length !== 40)
+            return alert(`Received ${sha1Password.value.length}, but HEX encoded SHA-1 result's length is 40.`);
+          }
+        }
+      });
+    
+      async function sha1 (message) {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(message);
+        const hash = await crypto.subtle.digest('SHA-1', data);
+        const hashArray = Array.from(new Uint8Array(hash));
+        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        return hashHex;
+        return decoder.decode(hash);
+      }
+    </script>
+  </main>
+</body>
+
+</html>
+<script>
+  document.querySelectorAll(".copy-component").forEach(
+    e => {
+      e.onclick= () => {
+        const target = document.getElementById(e.getAttribute("for"));
+        if(target)
+          target.copy();
+      }
+    }
+  )
+</script>
