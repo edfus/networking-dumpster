@@ -1,6 +1,6 @@
 import cookieParser from "set-cookie-parser";
 import ProxyTunnel from "forward-proxy-tunnel";
-import { SocksClient } from 'socks';
+import { SocksClient } from "socks";
 
 import { request as request_https, Agent as HTTPSAgent } from "https";
 import { request as request_http, Agent as HTTPAgent, ClientRequest, IncomingMessage } from "http";
@@ -164,7 +164,7 @@ class HTTP {
               port: Number(port),
               type: Number(version)
             },
-            command: 'connect'
+            command: "connect"
           };
 
           const createConnection = ({ host, port }, cb) => {
@@ -290,10 +290,13 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const kOnceResume = Symbol("onceResume");
 const kReading = Symbol("reading");
 const kReadNext = Symbol("readNext");
+const kChunkBuffer = Symbol("chunkBuffer");
 
 class FormDataStream extends Readable {
   lineBreak = "\r\n";
-  defaultContentType = "application/octet-stream";
+  defaultContentType = "text/plain";
+  defaultStreamContentType = "application/octet-stream";
+  [kChunkBuffer] = "";
 
   constructor(iterator) {
     super();
@@ -314,28 +317,27 @@ class FormDataStream extends Readable {
 
     const [name, content] = value;
     
-    this.push(`--${boundary}`);
-    this.push(this.lineBreak);
+    this.pushChunk(`--${boundary}`);
+    this.pushChunk(this.lineBreak);
 
-    this.push(`Content-Disposition: form-data; name="${encodeURIComponent(name)}"`);
+    this.pushChunk(`Content-Disposition: form-data; name="${encodeURIComponent(name)}"`);
     // Readable or { source, filename, contentType, contentTransferEncoding }
     if(content instanceof Readable || content.source) {
       const source = content.source || content;
       const filename = content.filename || basename(content.path || "") || name;
-      const contentType = content.contentType || this.defaultContentType;
       
-      this.push(`; filename="${encodeURIComponent(filename)}"`);
-      this.push(this.lineBreak);
+      this.pushChunk(`; filename="${encodeURIComponent(filename)}"`);
+      this.pushChunk(this.lineBreak);
 
-      await this.streamFileField(source, contentType);
+      await this.streamFileField(source, content.contentType);
     } else {
-      this.push(this.lineBreak);
+      this.pushChunk(this.lineBreak);
       // Array
       if(Array.isArray(content)) {
         let filenameIndex = 0;
         const subBoundary = this.generateBoundary();
-        this.push(`Content-Type: multipart/mixed; boundary=${subBoundary}`);
-        this.push(this.lineBreak.repeat(2));
+        this.pushChunk(`Content-Type: multipart/mixed; boundary=${subBoundary}`);
+        this.pushChunk(this.lineBreak.repeat(2));
 
         /**
          * source: string | Buffer | Readable,
@@ -344,35 +346,35 @@ class FormDataStream extends Readable {
          * contentTransferEncoding: string
          */
         for (const file of content) {
-          this.push(`--${subBoundary}`);
-          this.push(this.lineBreak);
+          this.pushChunk(`--${subBoundary}`);
+          this.pushChunk(this.lineBreak);
 
           if(file instanceof Readable) {
             const filename = basename(file.path || "") || `${name}-${filenameIndex++}`;
-            this.push(
+            this.pushChunk(
               `Content-Disposition: file; filename="${
                 encodeURIComponent(filename)
               }"`
             );
-            this.push(this.lineBreak);
-            await this.streamFileField(file, this.defaultContentType);
+            this.pushChunk(this.lineBreak);
+            await this.streamFileField(file);
             continue;
           }
 
-          this.push(
+          this.pushChunk(
             `Content-Disposition: file; filename="${
               encodeURIComponent(file.filename || `${name}-${filenameIndex++}`)
             }"`
           );
-          this.push(this.lineBreak);
+          this.pushChunk(this.lineBreak);
           await this.streamFileField(file.source, file.contentType);
         }
 
-        this.push(`--${subBoundary}--`);
-        this.push(this.lineBreak);
+        this.pushChunk(`--${subBoundary}--`);
+        this.pushChunk(this.lineBreak);
       } else {
         // buffer or string
-        await this.streamFileField(content, this.defaultContentType);
+        await this.streamFileField(content);
       }
     }
 
@@ -432,16 +434,32 @@ class FormDataStream extends Readable {
     return "-".repeat(16).concat(randomBytes(20).toString("base64"));
   }
 
+  pushChunk (chunk) {
+    this[kChunkBuffer] = this[kChunkBuffer].concat(chunk);
+  }
+
+  flushChunks (encoding) {
+    this.push(this[kChunkBuffer], encoding);
+    this[kChunkBuffer] = "";
+  }
+
   async streamFileField (file, contentType) {
-    this.push(`Content-Type: ${contentType}`);
-    this.push(this.lineBreak.repeat(2));
-    
     assert(file);
   
     if(file.length) { // string or Buffer 
+      this.pushChunk(`Content-Type: ${contentType || this.defaultContentType}`);
+      this.pushChunk(this.lineBreak.repeat(2));
+      this.flushChunks();
       this.push(file);
       return this.push(this.lineBreak);
     }
+
+    if(!(file instanceof Readable))
+      throw new Error(`Received non-Readable stream ${file}`);
+
+    this.pushChunk(`Content-Type: ${contentType || this.defaultStreamContentType}`);
+    this.pushChunk(this.lineBreak.repeat(2));  
+    this.flushChunks();
 
     for await (const chunk of this.readStream(file)) {
       if(this.push(chunk) === false) {
@@ -453,9 +471,6 @@ class FormDataStream extends Readable {
   }
 
   async * readStream (stream) {
-    if(!(stream instanceof Readable))
-      throw new Error(`Received non-Readable stream ${stream}`);
-
     let chunk;
     while (stream.readable) {
       await new Promise((resolve, reject)=> {
