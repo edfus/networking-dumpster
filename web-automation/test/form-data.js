@@ -16,14 +16,14 @@ const { body, headers } = helper.serializeFormData(
       source: Buffer.from("<object></object>"),
       filename: "*coolest",
       contentType: 'image/jpeg',
-      contentTransferEncoding: "binary"
+      contentTransferEncoding: "binary" // deprecated
     },
     nuclearFusion: [
       {
         source: "<svg></svg>",
         filename: "multi-function cooler",
         contentType: 'image/svg',
-        contentTransferEncoding: "base64"
+        contentTransferEncoding: "base64" // deprecated
       },
       createReadStream(join(__dirname, "./go.mod")),
       {

@@ -327,7 +327,7 @@ class FormDataStream extends Readable {
       this.push(`; filename="${encodeURIComponent(filename)}"`);
       this.push(this.lineBreak);
 
-      await this.streamFileField(source, contentType, content.contentTransferEncoding);
+      await this.streamFileField(source, contentType);
     } else {
       this.push(this.lineBreak);
       // Array
@@ -365,7 +365,7 @@ class FormDataStream extends Readable {
             }"`
           );
           this.push(this.lineBreak);
-          await this.streamFileField(file.source, file.contentType, file.contentTransferEncoding);
+          await this.streamFileField(file.source, file.contentType);
         }
 
         this.push(`--${subBoundary}--`);
@@ -432,18 +432,14 @@ class FormDataStream extends Readable {
     return "-".repeat(16).concat(randomBytes(20).toString("base64"));
   }
 
-  async streamFileField (file, contentType, contentTransferEncoding) {
+  async streamFileField (file, contentType) {
     this.push(`Content-Type: ${contentType}`);
-    if(contentTransferEncoding) {
-      this.push(this.lineBreak);
-      this.push(`Content-Transfer-Encoding: ${contentTransferEncoding}`);
-    }
     this.push(this.lineBreak.repeat(2));
     
     assert(file);
   
     if(file.length) { // string or Buffer 
-      this.push(file, contentTransferEncoding || null);
+      this.push(file);
       return this.push(this.lineBreak);
     }
 
@@ -482,7 +478,14 @@ class FormDataStream extends Readable {
 }
 
 /**
- * https://www.w3.org/TR/html401/interact/forms.html#h-17.13.4
+ * Previously, it was recommended that senders use a Content-Transfer-
+   Encoding encoding (such as "quoted-printable") for each non-ASCII
+   part of a multipart/form-data body because that would allow use in
+   transports that only support a "7bit" encoding.  This use is
+   deprecated for use in contexts that support binary data such as HTTP.
+   Senders SHOULD NOT generate any parts with a Content-Transfer-
+   Encoding header field.
+ * https://tools.ietf.org/html/rfc7578
  * @param { FormData } formData an object implemented FormData interface
  * @param {"multipart/form-data" | "application/x-www-form-urlencoded"} type 
  * @returns { body: string | Readable, headers: object }
