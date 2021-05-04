@@ -6,8 +6,9 @@ import { JSDOM } from "jsdom";
 import { IncomingMessage } from "http";
 import metadata from "./.secrets/cc-metadata.js";
 import { stringify } from "querystring";
+import { fileURLToPath } from "url";
 
-const __filename = basename(import.meta.url);
+const __filename = basename(fileURLToPath(import.meta.url));
 const dumpPath = join(
   __dirname,
   `./${__filename.substring(0, __filename.length - extname(__filename).length)}.dump`
@@ -24,9 +25,11 @@ const sanitize = extractArg(/^--sanitize$/, 0) !== false;
 
 let proxy;
 if(httpProxy) {
-  proxy = /^https?:\/\//.test(httpProxy) ? httpProxy : "http://".concat(httpProxy);
-} else {
-  proxy = socksProxy && socksProxy.replace(/^(?<!socks(5|5h|4a):\/\/)(.)/, "socks5://$2");
+  proxy = normalizeProtocol(httpProxy, /^https?/, "http:");
+}
+
+if(socksProxy) {
+  proxy = normalizeProtocol(socksProxy, /^socks(5|5h|4a)/, "socks5:");
 }
 
 if(argvs.length) {
@@ -91,7 +94,7 @@ async function getLoginHTML() {
 async function jsdomLogin(filepath) {
   return JSDOM.fromFile(filepath, {
     url: http.lastContext.toString()
-  }).then(dom => {
+  }).then(async dom => {
     const { document, FormData } = dom.window;
     const form = document.forms["fm1"];
 
@@ -118,13 +121,12 @@ async function jsdomLogin(filepath) {
         302, 
         () => new Error(`jsdomLogin failed. ${helper.logResInfo(res)}`)
       );
-      return http.followRedirect(res, metadata.hostname);
+      return http.followRedirect(res);
     }).then(res => void res.resume());
   });
 }
 
 async function getFormModuleId() {
-  let id; //
   const resultStoreFilepath = join(
     dumpPath,
     `./edit-query-result-${new Date().toLocaleDateString().replace(/\/|\\/g, "-")
@@ -132,7 +134,6 @@ async function getFormModuleId() {
   );
 
   let source;
-
   if (existsSync(resultStoreFilepath)) {
     source = createReadStream(resultStoreFilepath);
   } else {
@@ -152,6 +153,7 @@ async function getFormModuleId() {
     );
   }
 
+  let id; //
   return new Promise((resolve, reject) => {
     pipeline(
       source,
@@ -203,7 +205,8 @@ async function createForm(id) {
             200, 
             () => new Error(`createForm failed. ${helper.logResInfo(res)}`)
           );
-          const filepath = join(dumpPath,"./form-backup.html");
+
+          const filepath = join(dumpPath, "./form-backup.html");
           
           pipeline(
             res,
@@ -227,10 +230,10 @@ async function sendData (id) {
 
   return http.fetch(
     {
-      method: "post",
+      method: "POST",
       hostname: metadata.hostname,
       path: metadata.postFormPath,
-      body: stringify(JSONForm),
+      body: stringify(JSONForm), // querystring.stringify
       headers: {
         "Content-type": "application/x-www-form-urlencoded; charset=UTF-8",
         "Accept": "application/json, text/javascript, */*; q=0.01"
@@ -328,4 +331,19 @@ function extractArg(matchPattern, offset = 0) {
     }
   }
   return false;
+}
+
+function normalizeProtocol(uri, matchCertainProtocol, defaultProtocol) {
+  if(!uri) return uri;
+  if(!/:\\?\/\\?\/$/.test(matchCertainProtocol.source)) {
+    matchCertainProtocol = new RegExp(
+      matchCertainProtocol.source.replace(/[:\\\/]+$/, "").concat("://")
+    );
+  }
+
+  return (
+    matchCertainProtocol.test(uri)
+    ? uri
+    : `${defaultProtocol}//${uri.replace(/^.*?:\/\//, "")}`
+  );
 }
