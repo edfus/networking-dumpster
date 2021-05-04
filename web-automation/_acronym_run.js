@@ -18,15 +18,13 @@ fsp.readdir("./", { withFileTypes: true })
             new Promise((resolve, reject) => {
               const child = spawn (
                 `node`,
-                [`./${dirent.name}`].concat(args.slice(1, args.length))
+                [`./${dirent.name}`].concat(args.slice(1, args.length)),
+                { shell: true, stdio: "inherit" }
               );
-              process.stdin.pipe(child.stdin);
-              child.stdout.pipe(process.stdout);
-              child.stderr.pipe(process.stderr);
 
-              child.on('exit', resolve);
-              child.on('close', resolve);
-              child.on("error", reject)
+              child.once('exit', resolve);
+              child.once('close', resolve);
+              child.once("error", reject)
             })   
           )
           return true;
