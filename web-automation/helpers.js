@@ -11,6 +11,7 @@ import { inspect } from "util";
 import { ok as assert, strictEqual } from "assert";
 import { Readable, Transform } from "stream";
 import { createHash, createHmac, randomBytes } from "crypto";
+import querystring from "querystring";
 
 
 class Cookie {
@@ -507,6 +508,7 @@ class FormDataStream extends Readable {
    Senders SHOULD NOT generate any parts with a Content-Transfer-
    Encoding header field.
  * https://tools.ietf.org/html/rfc7578
+ * https://github.com/nodejs/node/blob/v16.0.0/lib/querystring.js
  * @param { FormData } formData an object implemented FormData interface
  * @param {"multipart/form-data" | "application/x-www-form-urlencoded"} type 
  * @returns { body: string | Readable, headers: object }
@@ -532,16 +534,44 @@ function serializeFormData(formData, type = formData?.type) {
     default:
       type && console.warn(`Unknown type ${type} will be treated as application/x-www-form-urlencoded.`)
     case "application/x-www-form-urlencoded":
-      const result = [];
+      let result = [];
       for (const [key, value] of iterator) {
-        result.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+        const escapedKey = escape(key);
+        if(Array.isArray(value)) {
+          if(value.length)
+            result = result.concat(value.map(v => `${escapedKey}=${escape(v)}`));
+        } else {
+          result.push(`${escapedKey}=${escape(value)}`);
+        }
       }
+
       return {
         body: result.join("&"),
         headers: {
           "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
         }
       };
+  }
+}
+
+function escape(value) {
+  switch (typeof value) {
+    case "string":
+      return (value.length ? querystring.escape(value) : "");
+    case "number":
+      if(isFinite(value))
+      /**
+       * Values >= 1e21 automatically switch to scientific notation which requires
+       * escaping due to the inclusion of a '+' in the output
+       */
+        return (Math.abs(value) < 1e21 ? String(value) : querystring.escape(String(value)));
+      return "";
+    case "bigint":
+      return String(value);
+    case "boolean":
+      return value ? "true" : "false";
+    default:
+      return "";
   }
 }
 

@@ -49,7 +49,7 @@ declare function md5string (str: string): string;
 declare function sha1string (str: string): string;
 declare function hmac_md5 (str: string, key: string): string;
 
-export interface helper {
+interface Helper {
   mustStrictEqual: typeof mustStrictEqual;
   logResInfo: typeof logResInfo;
   series: typeof series;
@@ -59,3 +59,5 @@ export interface helper {
   hmac_md5: typeof hmac_md5;
   sha1string: typeof sha1string;
 }
+
+export const helper: Helper; 
