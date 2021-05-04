@@ -32,8 +32,10 @@ declare function mustStrictEqual (
 declare function logResInfo (res: IncomingMessage): string
 
 declare function series (
-  ...func: ((lastResult: any) => result),
-  callback: ((err?: Error) => void)
+  ...funcs: [
+    ...Array<((lastResult: any) => Promise<any>)>,
+    (err?: Error) => void
+  ]
 ): void
 
 declare function serializeFormData (
@@ -47,11 +49,13 @@ declare function md5string (str: string): string;
 declare function sha1string (str: string): string;
 declare function hmac_md5 (str: string, key: string): string;
 
-export const helper = {
-  mustStrictEqual,
-  logResInfo, series,
-  serializeFormData,
-  escapeRegExpSource,
-  md5string, hmac_md5,
-  sha1string
+export interface helper {
+  mustStrictEqual: typeof mustStrictEqual;
+  logResInfo: typeof logResInfo;
+  series: typeof series;
+  serializeFormData: typeof serializeFormData;
+  escapeRegExpSource: typeof escapeRegExpSource;
+  md5string: typeof md5string;
+  hmac_md5: typeof hmac_md5;
+  sha1string: typeof sha1string;
 }

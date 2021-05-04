@@ -379,6 +379,7 @@ class FormDataStream extends Readable {
     }
 
     if(this[kReadNext]) {
+      this[kReadNext] = false;
       return this.readNext();
     } else {
       return this[kReading] = false;
@@ -386,6 +387,11 @@ class FormDataStream extends Readable {
   }
 
   async onceResume () {
+    if(this[kReadNext]) {
+      this[kReadNext] = false;
+      return Promise.resolve();
+    }
+
     if(this[kOnceResume]?.promise) {
       return this[kOnceResume].promise;
     } else {
