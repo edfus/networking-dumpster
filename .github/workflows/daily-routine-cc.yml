@@ -53,3 +53,6 @@ jobs:
           EOF
           npm install 1>/dev/null
           node coronavirus-chore.js --sanitize --socks5 "${SOCKS5_PROXY}" 1>/dev/null
+      - name: Post cleaning
+        if: ${{ always() }}
+        run: rm -rf .secrets *.dump
