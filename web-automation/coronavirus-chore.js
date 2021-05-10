@@ -55,7 +55,17 @@ helper.series(
   sendData,
   console.info,
   err => {
-    if (err) throw err;
+    if (err) {
+      if(sanitize) {
+        const safeKeys = ["code", "errno", "message", "stack", "from"];
+        Object.keys(err).filter(k => !safeKeys.includes(k.toLowerCase())).forEach(
+          key => {
+            err[key] = "***";
+          }
+        )
+      }
+      throw err;
+    }
     process.exitCode = 0;
   }
 );
