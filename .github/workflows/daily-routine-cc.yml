@@ -23,7 +23,7 @@ jobs:
             -p ${{ secrets.SSLVPN_PASS }}
         options: >-
           --device /dev/net/tun --cap-add NET_ADMIN
-          --health-cmd "echo $(ps | sed -n '/daemon\s*danted/p') || exit 1" 
+          --health-cmd "pidof svpnservice > /dev/null || exit 1" 
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
