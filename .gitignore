@@ -1,9 +1,11 @@
 *.log.txt
 *.hidden
+*.hidden.*
 *.db.js
 *.dump
 *.cache
 .secrets
-secrets
+*.env
+_actions
 node_modules
 package-lock.json

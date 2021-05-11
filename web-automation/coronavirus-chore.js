@@ -149,7 +149,7 @@ async function getFormModuleId() {
   } else {
     source = await http.fetch({
       hostname: metadata.hostname,
-      path: metadata.getFormModuleIdPath,
+      path: metadata.createFormPath,
       headers: {
         "accept": "application/json, text/javascript, */*; q=0.01"
       },
