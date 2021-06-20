@@ -19,14 +19,14 @@ jobs:
         run: exit 1
       - name: Report Status
         if: ${{ failure() }}
-        uses: actions/github-script@v4
-        with:
-          script: |
+        run: |
+          node - <<'EOF'
             const notify = require("./.github/scripts/notify.js");
             const env = name => process.env[name];
-            await notify(
+            notify(
               env("WEBHOOK_URL"), env("WEBHOOK_KEY"), env("WEBHOOK_SECRET")
             );
+          EOF
         env:
           WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
           WEBHOOK_KEY: ${{ secrets.NOTIFY_WEBHOOK_KEY }}

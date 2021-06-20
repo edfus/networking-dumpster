@@ -1,6 +1,6 @@
 const http = require("http");
-const { Writable, promises } = require("stream");
-const { pipeline } = promises;
+const { Writable } = require("stream");
+const { pipeline } = require("stream/promises");
 const { Auth } = require("./auth-client.js");
 const { JSONParser } = require("./helpers.js");
 
