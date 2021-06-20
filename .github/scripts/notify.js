@@ -16,6 +16,7 @@ const { JSONParser } = require("./helpers.js");
       headers: {
         "Accept": "application/vnd.github.v3+json",
         "Authorization": `token ${token}`,
+        "User-Agent": `node ${process.version}`
       }
     }
   );
@@ -37,7 +38,7 @@ const { JSONParser } = require("./helpers.js");
           new JSONParser(),
           new Writable({
             objectMode: true,
-            write(workflows, enc, cb) {
+            write({ workflows }, enc, cb) {
               for (const workflow of Object.values(workflows)) {
                 if(workflow.name === workflowName) {
                   return cb(resolve(workflow["html_url"] || ""));
@@ -91,11 +92,11 @@ async function constructMessage(inputs) {
 
   const message = [
     `[github action]`,
-    `[${title}] - ${jobStatus}`,
+    `Action ${title} ${jobStatus}`,
     `${indent}workflow: ${workflow}`,
-    `${indent}repository: ${repo}`,
+    `${indent}repository: ${repo.split("/")[1] || repo}`,
     `${indent}branch: ${branch}`,
-    workflowURL,
+    // workflowURL,
     runURL
   ];
 
@@ -107,8 +108,8 @@ async function notify(url, key, secret) {
   const uriObject = new URL(url);
 
   const req = https.request(uriObject, {
-    headers: auth.post(uriObject),
-    method: "POST"
+    headers: auth.request(uriObject, "PUT"),
+    method: "PUT"
   });
 
   const getenv = name => process.env[name];
