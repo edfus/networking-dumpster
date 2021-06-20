@@ -53,6 +53,23 @@ jobs:
           EOF
           npm install 1>/dev/null
           node coronavirus-chore.js --sanitize --socks5 "${SOCKS5_PROXY}" 1>/dev/null
+      - name: Report Status
+        if: ${{ failure() }}
+        uses: actions/github-script@v4
+        with:
+          script: |
+            const notify = require("./.github/scripts/notify.js");
+            const env = name => process.env[name];
+            await notify(
+              env("WEBHOOK_URL"), env("WEBHOOK_KEY"), env("WEBHOOK_SECRET")
+            );
+        env:
+          WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
+          WEBHOOK_KEY: ${{ secrets.NOTIFY_WEBHOOK_KEY }}
+          WEBHOOK_SECRET: ${{ secrets.NOTIFY_WEBHOOK_SECRET }}
+          INPUT_STATUS: "failed"
+          INPUT_TOKEN: ${{ secrets.NOTIFY_GITHUB_TOKEN }}
+          INPUT_NOTIFICATION_TITLE: ${{ secrets.NOTIFY_TITLE }}
       - name: Post cleaning
         if: ${{ always() }}
         run: rm -rf .secrets *.dump

@@ -1,10 +1,10 @@
-import { Writable, pipeline, Transform } from "stream";
+import { Writable, pipeline } from "stream";
 import { existsSync, mkdirSync } from "fs";
 import { basename, extname, join } from "path";
 import metadata from "./.secrets/wifi-metadata.js";
 import { stringify } from "querystring";
 
-import { HTTP, __dirname, helper, JSONP_Parser, JSONParser } from "./helpers.js";
+import { HTTP, __dirname, helper, JSONP_Parser } from "./helpers.js";
 import { inspect } from "util";
 import osName from "os-name";
 import { platform, release } from "os";
