@@ -1,4 +1,4 @@
-const http = require("http");
+const https = require("https");
 const { Writable } = require("stream");
 const { pipeline } = require("stream/promises");
 const { Auth } = require("./auth-client.js");
@@ -10,7 +10,7 @@ const { JSONParser } = require("./helpers.js");
  * @returns 
  */
  async function getWorkflowUrl(token, repo, workflowName) {
-  const req = http.get(
+  const req = https.get(
     `https://api.github.com/repos/${repo}/actions/workflows`,
     {
       headers: {
@@ -106,7 +106,7 @@ async function notify(url, key, secret) {
   const auth = new Auth({ key, secret });
   const uriObject = new URL(url);
 
-  const req = http.request(uriObject, {
+  const req = https.request(uriObject, {
     headers: auth.post(uriObject),
     method: "POST"
   });
