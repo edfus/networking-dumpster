@@ -29,7 +29,9 @@ jobs:
           --health-retries 5
     steps:
       # setup
-      - uses: actions/checkout@v2
+      - name: Check out the workspace
+        if: ${{ always() }}
+        uses: actions/checkout@v2
       # node
       - name: Set up Node.js
         uses: actions/setup-node@v2
