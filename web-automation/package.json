@@ -13,7 +13,7 @@
   "dependencies": {
     "forward-proxy-tunnel": "^1.1.10",
     "jsdom": "^17.0.0",
-    "os-name": "^4.0.0",
+    "os-name": "^5.0.0",
     "set-cookie-parser": "^2.4.8",
     "socks": "^2.6.1"
   }
