@@ -44,7 +44,7 @@ class Cookie {
         if (!Array.isArray(cookiesArray))
           return "";
 
-        return cookiesArray.reduce(
+        return deleteOverwrittenCookies(cookiesArray).reduce(
           (result, currentValue, i) => {
             if (currentValue.secure && !inSecureContext)
               return result;
@@ -281,8 +281,10 @@ class HTTP {
 
     // URI
     return (
-      this.fetch({ host, path: res.headers.location })
-          .then(res => this.followRedirect(res, host))
+      this.fetch({ 
+        protocol: res.socket.encrypted ? "https:" : "http:", 
+        host, path: res.headers.location 
+      }).then(res => this.followRedirect(res, host))
     );
   }
 }
@@ -586,7 +588,7 @@ class JSONParser extends Transform {
   _transform(chunk, enc, cb) {
     this[Symbol.for("kTmpSource")].push(chunk);
     if (this[Symbol.for("kLength")] += chunk.length > this[Symbol.for("kMaxLength")])
-      return cb(new RangeError(`JSONParser: maxLength ${maxLength} reached.`));
+      return cb(new RangeError(`JSONParser: maxLength ${this[Symbol.for("kMaxLength")]} reached.`));
     return cb();
   }
 
@@ -697,6 +699,31 @@ function md5string(string) {
 
 function sha1string(string) {
   return createHash("sha1").update(string).digest("hex");
+}
+
+function deleteOverwrittenCookies(objArr) {
+  const tagUnique = {};
+  let stringified;
+  return objArr.reverse().filter(
+    newObj => 
+      (stringified = Object.entries(newObj)
+        .sort(
+          (entryA, entryB) => 
+            Number(entryA[0]) - Number(entryB[0])
+        )
+        .reduce(
+          (accumulator, currentEntry) => 
+            accumulator += (
+              currentEntry[0] === "value"
+              ? currentEntry[0].split("=")[0]
+              : currentEntry[0] 
+              + JSON.stringify(currentEntry[1])
+            )
+        )
+      ) in tagUnique
+        ? false
+        : tagUnique[stringified] = true
+  ).reverse();
 }
 
 export const helper = {

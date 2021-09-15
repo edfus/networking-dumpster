@@ -72,6 +72,7 @@ helper.series(
 
 async function getLoginHTML() {
   return http.fetch({
+    protocol: "https:",
     hostname: metadata.hostname,
     path: metadata.loginPath
   })
@@ -119,6 +120,7 @@ async function jsdomLogin(filepath) {
     return http.fetch(
       uri,
       {
+        protocol: "https:",
         method: form.method,
         body: body,
         headers: {
@@ -148,6 +150,7 @@ async function getFormModuleId() {
     source = createReadStream(resultStoreFilepath);
   } else {
     source = await http.fetch({
+      protocol: "https:",
       hostname: metadata.hostname,
       path: metadata.createFormPath,
       headers: {
@@ -205,6 +208,7 @@ async function createForm(id) {
   const query = `?zt=00&id=${id}`;
 
   return http.fetch({
+      protocol: "https:",
       hostname: metadata.hostname,
       path: metadata.formEditPath.concat(query),
     })
@@ -240,6 +244,7 @@ async function sendData (id) {
 
   return http.fetch(
     {
+      protocol: "https:",
       method: "POST",
       hostname: metadata.hostname,
       path: metadata.postFormPath,
@@ -284,6 +289,7 @@ async function sendData (id) {
 async function resendUnchecked() {
   return http.fetch(
     {
+      protocol: "https:",
       method: "post",
       hostname: metadata.hostname,
       path: metadata.getSubmittedFormsPath,
