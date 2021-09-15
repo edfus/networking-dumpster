@@ -2,10 +2,10 @@
   "name": "form-postman",
   "version": "1.0.0",
   "description": "",
-  "main": "_acronym_run.js",
+  "main": "_initials_run.js",
   "type": "module",
   "scripts": {
-    "_": "node _acronym_run.js"
+    "_": "node _initials_run.js"
   },
   "keywords": [],
   "author": "",
