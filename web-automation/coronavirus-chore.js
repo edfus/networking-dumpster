@@ -1,6 +1,6 @@
 import { Writable, pipeline } from "stream";
 import { createReadStream, createWriteStream, existsSync, mkdirSync } from "fs";
-import { HTTP, __dirname, helper, JSONParser } from "./helpers.js";
+import { HTTP, __dirname, helper, JSONParser, StringReader } from "./helpers.js";
 import { basename, extname, join } from "path";
 import { JSDOM } from "jsdom";
 import { IncomingMessage } from "http";
@@ -50,8 +50,7 @@ helper.series(
   getLoginHTML,
   jsdomLogin,
   // ↑ service --JSession--> sso --JSession+ticket--> service --set-cookie-->
-  getFormModuleId,
-  createForm,
+  getToken,
   sendData,
   console.info,
   err => {
@@ -78,6 +77,26 @@ async function getLoginHTML() {
   })
     .then(res =>
       http.followRedirect(res, metadata.hostname)
+        .then(
+          async res => {
+            helper.mustStrictEqual(
+              res.statusCode,
+              200, 
+              () => new Error(`getLoginHTML failed. ${helper.logResInfo(res)}`)
+            );
+
+            res.resume();
+
+            return http.followRedirect(
+              await http.fetch(
+                metadata.loginRedirectPath
+                + encodeURIComponent(
+                  http.lastContext.searchParams.get("redirectUrl")
+                )
+              )
+            )
+          }
+        )
         .then(async res => {
           helper.mustStrictEqual(
             res.statusCode,
@@ -138,17 +157,17 @@ async function jsdomLogin(filepath) {
   });
 }
 
-async function getFormModuleId() {
-  const resultStoreFilepath = join(
-    dumpPath,
-    `./edit-query-result-${new Date().toLocaleDateString().replace(/\/|\\/g, "-")
-    }.json`
-  );
+async function getToken() {
+  // const resultStoreFilepath = join(
+  //   dumpPath,
+  //   `./edit-query-result-${new Date().toLocaleDateString().replace(/\/|\\/g, "-")
+  //   }.json`
+  // );
 
   let source;
-  if (existsSync(resultStoreFilepath)) {
-    source = createReadStream(resultStoreFilepath);
-  } else {
+  // if (existsSync(resultStoreFilepath)) {
+  //   source = createReadStream(resultStoreFilepath);
+  // } else {
     source = await http.fetch({
       protocol: "https:",
       hostname: metadata.hostname,
@@ -162,30 +181,30 @@ async function getFormModuleId() {
     helper.mustStrictEqual(
       source.statusCode,
       200, 
-      () => new Error(`getFormModuleId failed. ${helper.logResInfo(source)}`)
+      () => new Error(`getToken failed. ${helper.logResInfo(source)}`)
     );
-  }
+  // }
 
-  let id; //
+  let token; //
   return new Promise((resolve, reject) => {
     pipeline(
       source,
-      new JSONParser(),
+      new StringReader(),
       new Writable({
         objectMode: true,
         write(result, _, cb) {
-          if (!result.isSuccess)
-            return cb(new Error(sanitize ? "getFormModuleId received falsy isSuccess" : result.msg));
+          // if (!result.isSuccess)
+          //   return cb(new Error(sanitize ? "getToken received falsy isSuccess" : result.msg));
 
-          id = result.module; //
+          token = result; //
 
-          if (source instanceof IncomingMessage) {
-            createWriteStream(resultStoreFilepath)
-              .end(JSON.stringify(result), cb)
-            ;
-          } else {
+          // if (source instanceof IncomingMessage) {
+          //   createWriteStream(resultStoreFilepath)
+          //     .end(JSON.stringify(result), cb)
+          //   ;
+          // } else {
             return cb();
-          }
+          // }
         }
       }),
       err => {
@@ -195,17 +214,17 @@ async function getFormModuleId() {
           return reject(err);
         }
 
-        return resolve(id);
+        return resolve(token);
       }
     );
   });
 }
 
-async function createForm(id) {
-  if(!id)
-    throw new Error(`createForm received falsy id ${id}`);
+async function createForm(token) {
+  if(!token)
+    throw new Error(`createForm received falsy token ${token}`);
 
-  const query = `?zt=00&id=${id}`;
+  const query = `?zt=00&token=${token}`;
 
   return http.fetch({
       protocol: "https:",
@@ -225,20 +244,20 @@ async function createForm(id) {
           pipeline(
             res,
             createWriteStream(filepath),
-            err => err ? reject(err) : resolve(id)
+            err => err ? reject(err) : resolve(token)
           );
         })
       )
   ;
 }
 
-async function sendData (id) {
+async function sendData (token) {
   const JSONForm = {
     info: JSON.stringify({
       model: {
         ...metadata.secrets.JSONForm.info.model,
-        id: id
-      }
+      },
+      token: token
     })
   };
 
@@ -319,7 +338,7 @@ async function resendUnchecked() {
               list.map(
                 async formDetails => {
                   if(formDetails.zt !== "01") {
-                    return sendData(formDetails.id)
+                    return sendData(formDetails.token)
                   }
                 }
               )

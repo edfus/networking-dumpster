@@ -10,6 +10,13 @@ export declare class HTTP extends ProxyTunnel {
   followRedirect (res: IncomingMessage, hostname: string): Promise<IncomingMessage>;
 }
 
+export declare class StringReader extends Transform {
+  /**
+   * @param maxLength default: Infinity
+   */
+  constructor (maxLength?: number);
+}
+
 export declare class JSONParser extends Transform {
   /**
    * @param maxLength default: Infinity

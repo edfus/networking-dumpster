@@ -608,6 +608,37 @@ class JSONParser extends Transform {
   }
 }
 
+class StringReader extends Transform {
+  constructor(maxLength = Infinity) {
+    super({ readableObjectMode: true });
+    this[Symbol.for("kLength")] = 0;
+    this[Symbol.for("kMaxLength")] = maxLength;
+    this[Symbol.for("kTmpSource")] = [];
+  }
+
+  _transform(chunk, enc, cb) {
+    this[Symbol.for("kTmpSource")].push(chunk);
+    if (this[Symbol.for("kLength")] += chunk.length > this[Symbol.for("kMaxLength")])
+      return cb(new RangeError(`${this.constructor.name}: maxLength ${maxLength} reached.`));
+    return cb();
+  }
+
+  _flush(cb) {
+    if (!this[Symbol.for("kTmpSource")])
+      return cb(new Error("Empty response"));
+
+    const data = new TextDecoder("utf8").decode(
+      Buffer.concat(this[Symbol.for("kTmpSource")])
+    );
+
+    try {
+      return cb(null, data);
+    } catch (err) {
+      return cb(err);
+    }
+  }
+}
+
 let escapeRegEx;
 function escapeRegExpSource(str) {
   if(!escapeRegEx) {
@@ -732,5 +763,5 @@ export const helper = {
 };
 
 export {
-  Cookie, HTTP, __dirname, JSONParser, JSONP_Parser,
+  Cookie, HTTP, __dirname, JSONParser, JSONP_Parser, StringReader
 };
