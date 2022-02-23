@@ -85,16 +85,17 @@ async function getLoginHTML() {
               () => new Error(`getLoginHTML failed. ${helper.logResInfo(res)}`)
             );
 
-            res.resume();
+            // res.resume();
 
-            return http.followRedirect(
-              await http.fetch(
-                metadata.loginRedirectPath
-                + encodeURIComponent(
-                  http.lastContext.searchParams.get("redirectUrl")
-                )
-              )
-            )
+            return res
+            // http.followRedirect(
+            //   await http.fetch(
+            //     metadata.loginRedirectPath
+            //     + encodeURIComponent(
+            //       http.lastContext.searchParams.get("redirectUrl")
+            //     )
+            //   )
+            // )
           }
         )
         .then(async res => {
