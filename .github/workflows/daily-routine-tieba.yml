@@ -70,6 +70,7 @@ jobs:
         env:
           TIEBA_USERNAME: ${{ secrets.TIEBA_USERNAME }}
         run: |
+          mkdir -p py
           cd ./py
           wget https://raw.githubusercontent.com/Aruelius/tieba_sign/master/tieba_sign.py
           wget https://raw.githubusercontent.com/Aruelius/tieba_sign/master/requirements.txt
