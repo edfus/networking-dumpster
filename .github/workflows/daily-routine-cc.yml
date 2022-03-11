@@ -2,7 +2,7 @@ name: Daily Routine CC
 
 on:
   schedule:
-    - cron: 0 1 * * *
+    - cron: 0 1,2,23 * * *
   workflow_dispatch:
 jobs:
   run-cc:
