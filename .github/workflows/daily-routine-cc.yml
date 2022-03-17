@@ -2,7 +2,7 @@ name: Daily Routine CC
 
 on:
   schedule:
-    - cron: 0 1,2,23 * * *
+    - cron: 20 23 * * *
   workflow_dispatch:
 jobs:
   run-cc:
@@ -56,8 +56,40 @@ jobs:
           EOF
           npm install 1>/dev/null
           node coronavirus-chore.js --sanitize --socks5 "${SOCKS5_PROXY}" 1>/dev/null
-      - name: Report Status
-        if: ${{ failure() }}
+      - name: Post cleaning
+        if: ${{ always() }}
+        run: rm -rf .secrets *.dump
+  retry_when_failed:
+    name: Restarts the scheduled run when it failed
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' && failure()
+    needs: [run-cc]
+    steps:
+      - name: Retry the job
+        run: |
+          sleep 30m; \
+          curl -i \
+          -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.NOTIFY_GITHUB_TOKEN }}" \
+          https://api.github.com/repos/edfus/networking-dumpster/actions/workflows/8393245/dispatches \
+          -d '{"ref": "${{ github.ref }}" }'
+  send_notifications:
+     runs-on: ubuntu-latest
+     if: github.event_name == 'workflow_dispatch' && failure()
+     needs: [run-cc]
+     steps:
+      # setup
+      - name: Check out the workspace
+        if: ${{ always() }}
+        uses: actions/checkout@v2
+      # node
+      - name: Set up Node.js
+        if: ${{ always() }}
+        uses: actions/setup-node@v2
+        with:
+          node-version: 16
+      - name: Send a notification
         run: |
           node - <<'EOF'
             const notify = require("./.github/scripts/notify.js");
@@ -73,6 +105,3 @@ jobs:
           INPUT_STATUS: "failed"
           INPUT_TOKEN: ${{ secrets.NOTIFY_GITHUB_TOKEN }}
           INPUT_NOTIFICATION_TITLE: ${{ secrets.NOTIFY_TITLE }}
-      - name: Post cleaning
-        if: ${{ always() }}
-        run: rm -rf .secrets *.dump
