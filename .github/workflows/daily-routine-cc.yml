@@ -62,16 +62,18 @@ jobs:
   retry_when_failed:
     name: Restarts the scheduled run when it failed
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' && failure()
+    if: failure() # github.event_name == 'schedule' && failure()
     needs: [run-cc]
+    env:
+      ACCESS_TOKEN: ${{ secrets.NOTIFY_GITHUB_TOKEN }}
     steps:
       - name: Retry the job
         run: |
           sleep 30m; \
-          curl -i \
+          curl -i -s --fail-with-body \
           -X POST \
           -H "Accept: application/vnd.github.v3+json" \
-          -H "Authorization: token ${{ secrets.NOTIFY_GITHUB_TOKEN }}" \
+          -H "Authorization: token $ACCESS_TOKEN" \
           https://api.github.com/repos/edfus/networking-dumpster/actions/workflows/8393245/dispatches \
           -d '{"ref": "${{ github.ref }}" }'
   send_notifications:
