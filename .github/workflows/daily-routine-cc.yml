@@ -67,6 +67,8 @@ jobs:
     env:
       ACCESS_TOKEN: ${{ secrets.NOTIFY_GITHUB_TOKEN }}
     steps:
+      - name: Upgrade Curl
+        run: sudo apt-get install -y curl
       - name: Retry the job
         run: |
           sleep 30m; \
