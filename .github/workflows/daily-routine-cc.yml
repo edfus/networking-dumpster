@@ -67,12 +67,13 @@ jobs:
     env:
       ACCESS_TOKEN: ${{ secrets.NOTIFY_GITHUB_TOKEN }}
     steps:
-      - name: Upgrade Curl
-        run: sudo apt-get install -y curl
+      #- name: Upgrade Curl
+      #  run: sudo apt-get install -y curl
       - name: Retry the job
+      # run: curl -i -s --fail-with-body \
         run: |
           sleep 30m; \
-          curl -i -s --fail-with-body \
+          curl -i -s  --show-error --fail \
           -X POST \
           -H "Accept: application/vnd.github.v3+json" \
           -H "Authorization: token $ACCESS_TOKEN" \
