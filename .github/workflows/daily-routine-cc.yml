@@ -61,6 +61,7 @@ jobs:
         run: rm -rf .secrets *.dump
   retry_when_failed:
     name: Restarts the scheduled run when it failed
+    environment: daily-routine-cc
     runs-on: ubuntu-latest
     if: failure() # github.event_name == 'schedule' && failure()
     needs: [run-cc]
@@ -81,6 +82,7 @@ jobs:
           -d '{"ref": "${{ github.ref }}" }'
   send_notifications:
      runs-on: ubuntu-latest
+     environment: daily-routine-cc
      if: github.event_name == 'workflow_dispatch' && failure()
      needs: [run-cc]
      steps:
