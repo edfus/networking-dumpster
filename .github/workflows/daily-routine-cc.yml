@@ -2,7 +2,7 @@ name: Daily Routine CC
 
 on:
   schedule:
-    - cron: 20 23 * * *
+    - cron: 25 23 * * *
   workflow_dispatch:
 jobs:
   run-cc:
@@ -59,8 +59,7 @@ jobs:
       - name: Post cleaning
         if: ${{ always() }}
         run: rm -rf .secrets *.dump
-  retry_when_failed:
-    name: Restarts the scheduled run when it failed
+  retry-when-failed:
     environment: daily-routine-cc
     runs-on: ubuntu-latest
     if: failure() # github.event_name == 'schedule' && failure()
@@ -80,7 +79,7 @@ jobs:
           -H "Authorization: token $ACCESS_TOKEN" \
           https://api.github.com/repos/edfus/networking-dumpster/actions/workflows/8393245/dispatches \
           -d '{"ref": "${{ github.ref }}" }'
-  send_notifications:
+  send-notifications:
      runs-on: ubuntu-latest
      environment: daily-routine-cc
      if: github.event_name == 'workflow_dispatch' && failure()
