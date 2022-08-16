@@ -2,7 +2,7 @@ name: Daily Routine CC
 
 on:
   schedule:
-    - cron: 0 22 * * *
+    - cron: 25 23 * * *
   workflow_dispatch:
 jobs:
   run-cc:
@@ -56,8 +56,46 @@ jobs:
           EOF
           npm install 1>/dev/null
           node coronavirus-chore.js --sanitize --socks5 "${SOCKS5_PROXY}" 1>/dev/null
-      - name: Report Status
-        if: ${{ failure() }}
+      - name: Post cleaning
+        if: ${{ always() }}
+        run: rm -rf .secrets *.dump
+  retry-when-failed:
+    environment: daily-routine-cc
+    runs-on: ubuntu-latest
+    if: failure() # github.event_name == 'schedule' && failure()
+    needs: [run-cc]
+    env:
+      ACCESS_TOKEN: ${{ secrets.NOTIFY_GITHUB_TOKEN }}
+    steps:
+      #- name: Upgrade Curl
+      #  run: sudo apt-get install -y curl
+      - name: Retry the job
+      # run: curl -i -s --fail-with-body \
+        run: |
+          sleep 30m; \
+          curl -i -s  --show-error --fail \
+          -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token $ACCESS_TOKEN" \
+          https://api.github.com/repos/edfus/networking-dumpster/actions/workflows/8393245/dispatches \
+          -d '{"ref": "${{ github.ref }}" }'
+  send-notifications:
+     runs-on: ubuntu-latest
+     environment: daily-routine-cc
+     if: github.event_name == 'workflow_dispatch' && failure()
+     needs: [run-cc]
+     steps:
+      # setup
+      - name: Check out the workspace
+        if: ${{ always() }}
+        uses: actions/checkout@v2
+      # node
+      - name: Set up Node.js
+        if: ${{ always() }}
+        uses: actions/setup-node@v2
+        with:
+          node-version: 16
+      - name: Send a notification
         run: |
           node - <<'EOF'
             const notify = require("./.github/scripts/notify.js");
@@ -73,6 +111,3 @@ jobs:
           INPUT_STATUS: "failed"
           INPUT_TOKEN: ${{ secrets.NOTIFY_GITHUB_TOKEN }}
           INPUT_NOTIFICATION_TITLE: ${{ secrets.NOTIFY_TITLE }}
-      - name: Post cleaning
-        if: ${{ always() }}
-        run: rm -rf .secrets *.dump
