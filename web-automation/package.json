@@ -12,7 +12,7 @@
   "license": "ISC",
   "dependencies": {
     "forward-proxy-tunnel": "^1.1.10",
-    "jsdom": "^19.0.0",
+    "jsdom": "^21.1.0",
     "os-name": "^5.0.0",
     "set-cookie-parser": "^2.4.8",
     "socks": "^2.6.1"
